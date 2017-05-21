@@ -127,7 +127,7 @@ module NetHTTPUtils
           logger.info "code #{response.code} at #{request.method} #{request.uri}#{
             " and so #{url}" if request.uri.to_s != url
           } from #{
-            [__FILE__, caller.map{ |i| i[/\d+/] }].join ?:
+            [__FILE__, caller.map{ |i| i[/(?<=:)\d+/] }].join ?:
           } with body: #{
             response.body.tap do |body|
               body.replace body.strip.gsub(/<script>.*?<\/script>/m, "").gsub(/<[^>]*>/, "") if body[/<html[> ]/]
