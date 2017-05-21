@@ -34,18 +34,18 @@ module NetHTTPUtils
         end.new(uri).tap do |request| # somehow Get eats even raw url, not URI object
           patch_request.call uri, form, request if patch_request
           request.basic_auth *auth if auth
-          header.each{ |k, v| request[k] = v }
           request["cookie"] = [*request["cookie"], cookies.map{ |k, v| "#{k}=#{v}" }].join "; " unless cookies.empty?
 
           request.set_form_data form unless form.empty?
           if mtd == :POST || mtd == :PATCH
             request["Content-Type"] = case type
-              when :form ; "multipart/form-data"
+              when :form ; "application/x-www-form-urlencoded"
               when :json ; request.body = JSON.dump form     # yes this overwrites form data set few lines higher
                            "application/json"
               else       ; raise "unknown content-type '#{type}'"
             end
           end
+          header.each{ |k, v| request[k] = v }
 
           logger.info request.path
           next unless logger.debug?
