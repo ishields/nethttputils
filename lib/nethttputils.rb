@@ -45,7 +45,7 @@ module NetHTTPUtils
               else       ; raise "unknown content-type '#{type}'"
             end
           end
-          header.each{ |k, v| request[k] = v }
+          header.each{ |k, v| request[k.to_s] = v }
 
           logger.info request.path
           next unless logger.debug?
@@ -118,6 +118,9 @@ module NetHTTPUtils
             end.inspect
           }"
           response
+        when "429"
+          logger.error "429 at #{request.method} #{request.uri} with body: #{response.body.inspect}"
+          response
         when /\A50\d\z/
           logger.error "#{response.code} at #{request.method} #{request.uri} with body: #{response.body.inspect}"
           response
@@ -128,7 +131,9 @@ module NetHTTPUtils
             " and so #{url}" if request.uri.to_s != url
           } from #{
             [__FILE__, caller.map{ |i| i[/(?<=:)\d+/] }].join ?:
-          } with body: #{
+          }"
+          logger.debug "header: #{response.to_hash}"
+          logger.debug "body: #{
             response.body.tap do |body|
               body.replace body.strip.gsub(/<script>.*?<\/script>/m, "").gsub(/<[^>]*>/, "") if body[/<html[> ]/]
             end.inspect
