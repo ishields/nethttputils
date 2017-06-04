@@ -15,6 +15,14 @@ module NetHTTPUtils
     "#{severity.to_s[0]} #{datetime.strftime "%y%m%d %H%M%S"} : #{name} : #{msg}\n"
   end
 
+  class Error < RuntimeError
+    attr_reader :code
+    def initialize code, body
+      @code = code
+      super "NetHTTPUtils error ##{code} #{body}"
+    end
+  end
+
   class << self
 
     # private?
@@ -149,8 +157,7 @@ module NetHTTPUtils
 
     def request_data *args
       response = get_response *args
-      throw :"404", response.body if "404" == response.code
-      throw :"500" if "500" == response.code
+      raise Error.new response.code.to_i, response.body if %w{ 404 429 500 }.include? response.code
       response.body
     ensure
       response.instance_variable_get("@nethttputils_close").call if response
@@ -165,11 +172,15 @@ if $0 == __FILE__
 
   fail unless NetHTTPUtils.request_data("http://httpstat.us/200") == "200 OK"
   fail unless NetHTTPUtils.get_response("http://httpstat.us/404").body == "404 Not Found"
-  catch(:"404"){ fail NetHTTPUtils.request_data "http://httpstat.us/404" }
-  # TODO raise?
+  [404, 500].each do |code|
+    begin
+      fail NetHTTPUtils.request_data "http://httpstat.us/#{code}"
+    rescue NetHTTPUtils::Error => e
+      raise if e.code != code
+    end
+  end
   fail unless NetHTTPUtils.request_data("http://httpstat.us/400") == "400 Bad Request"
   fail unless NetHTTPUtils.get_response("http://httpstat.us/500").body == "500 Internal Server Error"
-  catch(:"500"){ fail NetHTTPUtils.request_data "http://httpstat.us/500" }
 
   puts "OK #{__FILE__}"
 end
