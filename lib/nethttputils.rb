@@ -57,6 +57,7 @@ module NetHTTPUtils
 
           logger.info request.path
           next unless logger.debug?
+          logger.info "curl -s -D - #{header.map{ |k, v| "-H \"#{k}: #{v}\" " }.join}#{url}"
           logger.debug "header: #{request.each_header.to_a.to_s}"
           logger.debug "body: #{request.body.inspect.tap{ |body| body[100..-1] = "..." if body.size > 100 }}"
           stack = caller.reverse.map do |level|
@@ -155,8 +156,8 @@ module NetHTTPUtils
       end
     end
 
-    def request_data *args
-      response = get_response *args
+    def request_data *args, &block
+      response = get_response *args, &block
       raise Error.new response.code.to_i, response.body if %w{ 404 429 500 }.include? response.code
       response.body
     ensure
