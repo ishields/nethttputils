@@ -159,7 +159,11 @@ module NetHTTPUtils
     def request_data *args, &block
       response = get_response *args, &block
       raise Error.new response.code.to_i, response.body if %w{ 404 429 500 }.include? response.code
-      response.body
+      if response["content-encoding"] == "gzip"
+        Zlib::GzipReader.new(StringIO.new(response.body)).read
+      else
+        response.body
+      end
     ensure
       response.instance_variable_get("@nethttputils_close").call if response
     end
