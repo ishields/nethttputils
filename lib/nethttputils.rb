@@ -26,7 +26,7 @@ module NetHTTPUtils
   class << self
 
     # private?
-    def get_response url, mtd = :GET, type = :form, form: {}, header: [], auth: nil, timeout: 30, patch_request: nil, &block
+    def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, patch_request: nil, &block
       # form = Hash[form.map{ |k, v| [k.to_s, v] }]
       uri = URI.parse url
       mtd = mtd.upcase
@@ -47,7 +47,7 @@ module NetHTTPUtils
           request.set_form_data form unless form.empty?
           if mtd == :POST || mtd == :PATCH
             request["Content-Type"] = case type
-              when :form ; "application/x-www-form-urlencoded"
+              when :form ; "application/x-www-form-urlencoded;charset=UTF-8"
               when :json ; request.body = JSON.dump form     # yes this overwrites form data set few lines higher
                            "application/json"
               else       ; raise "unknown content-type '#{type}'"
@@ -58,7 +58,7 @@ module NetHTTPUtils
           logger.info request.path
           next unless logger.debug?
           logger.info "curl -s -D - #{header.map{ |k, v| "-H \"#{k}: #{v}\" " }.join}#{url}"
-          logger.debug "header: #{request.each_header.to_a.to_s}"
+          logger.debug "header: #{request.each_header.to_a}"
           logger.debug "body: #{request.body.inspect.tap{ |body| body[100..-1] = "..." if body.size > 100 }}"
           stack = caller.reverse.map do |level|
             /((?:[^\/:]+\/)?[^\/:]+):([^:]+)/.match(level).captures
