@@ -106,6 +106,24 @@ module NetHTTPUtils
         end
         response.instance_variable_set "@nethttputils_close", http.method(:finish)
         # response.singleton_class.instance_eval{ attr_accessor :nethttputils_socket_to_close }
+
+        # begin
+          c = response.fetch("x-ratelimit-userremaining").to_i
+          logger.debug "x-ratelimit-userremaining: #{c}"
+          t = response.fetch("x-ratelimit-clientremaining").to_i
+          logger.debug "x-ratelimit-clientremaining: #{t}"
+          unless 100 < c
+            a = response.fetch("x-timer")[/\d+/].to_i
+            b = response.fetch("x-ratelimit-userreset").to_i
+            t = (b - a + 1).fdiv c
+            logger.warn "x-ratelimit sleep #{t} seconds"
+            sleep t
+          end
+        # rescue KeyError => e
+        #   logger.error "#{e}: #{args}"
+        #   sleep 5
+        # end
+
         response.to_hash.fetch("set-cookie", []).each{ |c| k, v = c.split(?=); cookies[k] = v[/[^;]+/] }
         case response.code
         when /\A3\d\d\z/
