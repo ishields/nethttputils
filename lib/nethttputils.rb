@@ -57,7 +57,7 @@ module NetHTTPUtils
 
           logger.info request.path
           next unless logger.debug?
-          logger.info "curl -s -D - #{header.map{ |k, v| "-H \"#{k}: #{v}\" " }.join}#{url}"
+          logger.info "curl -s -D - #{request.each_header.map{ |k, v| "-H \"#{k}: #{v}\" " }.join}#{url}"
           logger.debug "header: #{request.each_header.to_a}"
           logger.debug "body: #{request.body.inspect.tap{ |body| body[100..-1] = "..." if body.size > 100 }}"
           stack = caller.reverse.map do |level|
