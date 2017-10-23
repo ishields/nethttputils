@@ -173,7 +173,7 @@ module NetHTTPUtils
 
     def request_data *args, &block
       response = get_response *args, &block
-      raise Error.new response.code.to_i, response.body if %w{ 404 429 500 }.include? response.code
+      raise Error.new response.code.to_i, response.body unless response.code[/\A(20\d|3\d\d)\z/]
       if response["content-encoding"] == "gzip"
         Zlib::GzipReader.new(StringIO.new(response.body)).read
       else
@@ -191,15 +191,15 @@ if $0 == __FILE__
   print "self testing... "
 
   fail unless NetHTTPUtils.request_data("http://httpstat.us/200") == "200 OK"
-  fail unless NetHTTPUtils.get_response("http://httpstat.us/404").body == "404 Not Found"
-  [404, 500].each do |code|
+  [400, 404, 500].each do |code|
     begin
       fail NetHTTPUtils.request_data "http://httpstat.us/#{code}"
     rescue NetHTTPUtils::Error => e
       raise if e.code != code
     end
   end
-  fail unless NetHTTPUtils.request_data("http://httpstat.us/400") == "400 Bad Request"
+  fail unless NetHTTPUtils.get_response("http://httpstat.us/400").body == "400 Bad Request"
+  fail unless NetHTTPUtils.get_response("http://httpstat.us/404").body == "404 Not Found"
   fail unless NetHTTPUtils.get_response("http://httpstat.us/500").body == "500 Internal Server Error"
 
   puts "OK #{__FILE__}"
