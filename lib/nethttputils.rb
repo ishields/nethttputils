@@ -27,9 +27,8 @@ module NetHTTPUtils
 
     # private?
     def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, patch_request: nil, &block
-      # form = Hash[form.map{ |k, v| [k.to_s, v] }]
       uri = URI.parse url
-      mtd = mtd.upcase
+      uri.query = URI.encode_www_form form if :GET == mtd = mtd.upcase
       cookies = {}
       prepare_request = lambda do |uri|
         case mtd.upcase
