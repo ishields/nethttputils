@@ -85,7 +85,7 @@ module NetHTTPUtils
           e.message.concat " to #{uri}"
           raise e
         rescue Errno::EHOSTUNREACH, Errno::ENETUNREACH, Errno::ECONNRESET, SocketError, OpenSSL::SSL::SSLError => e
-          if e.is_a?(SocketError) && e.message == "getaddrinfo: Name or service not known"
+          if e.is_a?(SocketError) && e.message.start_with?("getaddrinfo: ")
             e.message.concat ": #{uri.host}"
             raise e
           end
@@ -198,12 +198,22 @@ if $0 == __FILE__
     begin
       fail NetHTTPUtils.request_data "http://httpstat.us/#{code}"
     rescue NetHTTPUtils::Error => e
-      raise if e.code != code
+      raise unless e.code == code
     end
   end
   fail unless NetHTTPUtils.get_response("http://httpstat.us/400").body == "400 Bad Request"
   fail unless NetHTTPUtils.get_response("http://httpstat.us/404").body == "404 Not Found"
   fail unless NetHTTPUtils.get_response("http://httpstat.us/500").body == "500 Internal Server Error"
+  %w{
+    http://minus.com/lkP3hgRJd9npi
+    http://www.cutehalloweencostumeideas.org/wp-content/uploads/2017/10/Niagara-Falls_04.jpg
+  }.each do |url|
+    begin
+      fail NetHTTPUtils.request_data url
+    rescue SocketError => e
+      raise unless e.message.start_with? "getaddrinfo: "
+    end
+  end
 
   puts "OK #{__FILE__}"
 end
