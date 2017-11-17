@@ -82,14 +82,18 @@ module NetHTTPUtils
             http.set_debug_output STDERR if logger.level == Logger::DEBUG # use `logger.debug?`?
           end
         rescue Errno::ECONNREFUSED => e
-          e.message.concat " to #{uri}" # puts "#{e} to #{uri}"
+          e.message.concat " to #{uri}"
           raise e
         rescue Errno::EHOSTUNREACH, Errno::ENETUNREACH, Errno::ECONNRESET, SocketError, OpenSSL::SSL::SSLError => e
+          if e.is_a?(SocketError) && e.message == "getaddrinfo: Name or service not known"
+            e.message.concat ": #{uri.host}"
+            raise e
+          end
           logger.warn "retrying in 5 seconds because of #{e.class}: #{e.message}"
           sleep 5
           retry
         rescue Errno::ETIMEDOUT
-          logger.warn "ETIMEDOUT, retrying in 5 minutes"
+          logger.warn "retrying in 5 minutes because of ETIMEDOUT"
           sleep 300
           retry
         end
