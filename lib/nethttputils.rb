@@ -28,7 +28,9 @@ module NetHTTPUtils
     # private?
     def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, patch_request: nil, &block
       uri = URI.parse url
-      uri.query = URI.encode_www_form form if :GET == mtd = mtd.upcase
+      url_query = URI.decode_www_form uri.query
+      logger.warn "NetHTTPUtils does not support duplicating query keys" if url_query.map(&:first).uniq!
+      uri.query = URI.encode_www_form Hash[url_query].merge form if :GET == mtd = mtd.upcase
       cookies = {}
       prepare_request = lambda do |uri|
         case mtd.upcase
@@ -54,21 +56,19 @@ module NetHTTPUtils
           end
           header.each{ |k, v| request[k.to_s] = v }
 
-          logger.info request.path
+          logger.info "> #{request} #{request.path}"
           next unless logger.debug?
-          logger.info "curl -s -D - #{request.each_header.map{ |k, v| "-H \"#{k}: #{v}\" " }.join}#{url}"
-          logger.debug "header: #{request.each_header.to_a}"
-          logger.debug "body: #{request.body.inspect.tap{ |body| body[100..-1] = "..." if body.size > 100 }}"
+          logger.debug "curl -s -D - #{request.each_header.map{ |k, v| "-H \"#{k}: #{v}\" " unless k == "host" }.join}#{url.gsub "&", "\\\\&"}"
+          logger.debug "> header: #{request.each_header.to_a}"
+          logger.debug "> body: #{request.body.inspect.tap{ |body| body[100..-1] = "..." if body.size > 100 }}"
           stack = caller.reverse.map do |level|
             /((?:[^\/:]+\/)?[^\/:]+):([^:]+)/.match(level).captures
           end.chunk(&:first).map do |file, group|
             "#{file}:#{group.map(&:last).chunk{|_|_}.map(&:first).join(",")}"
           end
           logger.debug stack.join " -> "
-          logger.debug request
         end
       end
-      request = prepare_request[uri]
       start_http = lambda do |uri|
         begin
           Net::HTTP.start(
@@ -154,13 +154,13 @@ module NetHTTPUtils
         when /\A20/
           response
         else
-          logger.info "code #{response.code} at #{request.method} #{request.uri}#{
+          logger.warn "code #{response.code} at #{request.method} #{request.uri}#{
             " and so #{url}" if request.uri.to_s != url
           } from #{
             [__FILE__, caller.map{ |i| i[/(?<=:)\d+/] }].join ?:
           }"
-          logger.debug "header: #{response.to_hash}"
-          logger.debug "body: #{
+          logger.debug "< header: #{response.to_hash}"
+          logger.debug "< body: #{
             response.body.tap do |body|
               body.replace body.strip.gsub(/<script>.*?<\/script>/m, "").gsub(/<[^>]*>/, "") if body[/<html[> ]/]
             end.inspect
@@ -168,7 +168,7 @@ module NetHTTPUtils
           response
         end
       end
-      do_request[request].tap do |response|
+      do_request[prepare_request[uri]].tap do |response|
         cookies.each{ |k, v| response.add_field "Set-Cookie", "#{k}=#{v};" }
         logger.debug response.to_hash
       end
