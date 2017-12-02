@@ -28,7 +28,7 @@ module NetHTTPUtils
     # private?
     def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, patch_request: nil, &block
       uri = URI.parse url
-      url_query = URI.decode_www_form uri.query
+      url_query = URI.decode_www_form uri.query || ""
       logger.warn "NetHTTPUtils does not support duplicating query keys" if url_query.map(&:first).uniq!
       uri.query = URI.encode_www_form Hash[url_query].merge form if :GET == mtd = mtd.upcase
       cookies = {}
