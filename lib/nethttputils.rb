@@ -44,7 +44,6 @@ module NetHTTPUtils
           patch_request.call uri, form, request if patch_request
           request.basic_auth *auth if auth
           request["cookie"] = [*request["cookie"], cookies.map{ |k, v| "#{k}=#{v}" }].join "; " unless cookies.empty?
-
           request.set_form_data form unless form.empty?
           if mtd == :POST || mtd == :PATCH
             request["Content-Type"] = case type
@@ -84,10 +83,14 @@ module NetHTTPUtils
         rescue Errno::ECONNREFUSED => e
           e.message.concat " to #{uri}"
           raise e
+          # TODO retry?
         rescue Errno::EHOSTUNREACH, Errno::ENETUNREACH, Errno::ECONNRESET, SocketError, OpenSSL::SSL::SSLError => e
           if e.is_a?(SocketError) && e.message.start_with?("getaddrinfo: ")
-            e.message.concat ": #{uri.host}"
-            raise e
+            # e.message.concat ": #{uri.host}"
+            # raise e
+            logger.warn "retrying in 60 seconds because of #{e.class}: #{e.message}"
+            sleep 60
+            retry
           end
           logger.warn "retrying in 5 seconds because of #{e.class}: #{e.message}"
           sleep 5
@@ -149,7 +152,11 @@ module NetHTTPUtils
           logger.error "429 at #{request.method} #{request.uri} with body: #{response.body.inspect}"
           response
         when /\A50\d\z/
-          logger.error "#{response.code} at #{request.method} #{request.uri} with body: #{response.body.inspect}"
+          logger.error "#{response.code} at #{request.method} #{request.uri} with body: #{
+            response.body.tap do |body|
+              body.replace body.strip.gsub(/<script>.*?<\/script>/m, "").gsub(/<[^>]*>/, "") if body[/<html[> ]/]
+            end.inspect
+          }"
           response
         when /\A20/
           response
@@ -194,7 +201,7 @@ if $0 == __FILE__
   print "self testing... "
 
   fail unless NetHTTPUtils.request_data("http://httpstat.us/200") == "200 OK"
-  [400, 404, 500].each do |code|
+  [400, 404, 500, 503].each do |code|
     begin
       fail NetHTTPUtils.request_data "http://httpstat.us/#{code}"
     rescue NetHTTPUtils::Error => e
