@@ -86,11 +86,11 @@ module NetHTTPUtils
           # TODO retry?
         rescue Errno::EHOSTUNREACH, Errno::ENETUNREACH, Errno::ECONNRESET, SocketError, OpenSSL::SSL::SSLError => e
           if e.is_a?(SocketError) && e.message.start_with?("getaddrinfo: ")
-            # e.message.concat ": #{uri.host}"
-            # raise e
-            logger.warn "retrying in 60 seconds because of #{e.class}: #{e.message}"
-            sleep 60
-            retry
+            e.message.concat ": #{uri.host}"
+            raise e
+            # logger.warn "retrying in 60 seconds because of #{e.class}: #{e.message}"
+            # sleep 60
+            # retry
           end
           logger.warn "retrying in 5 seconds because of #{e.class}: #{e.message}"
           sleep 5
