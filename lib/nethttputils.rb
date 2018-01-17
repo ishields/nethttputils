@@ -26,7 +26,7 @@ module NetHTTPUtils
   class << self
 
     # private?
-    def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, max_timeout_retry_delay: 300, max_sslerror_retry_delay: 300, patch_request: nil, &block
+    def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, max_timeout_retry_delay: 3600, max_sslerror_retry_delay: 3600, patch_request: nil, &block
       uri = URI.parse url
       url_query = URI.decode_www_form uri.query || ""
       logger.warn "NetHTTPUtils does not support duplicating query keys" if url_query.map(&:first).uniq!
