@@ -17,9 +17,9 @@ module NetHTTPUtils
 
   class Error < RuntimeError
     attr_reader :code
-    def initialize code, body
+    def initialize body, code = nil
       @code = code
-      super "NetHTTPUtils error ##{code} #{body}"
+      super "HTTP error ##{code} #{body}"
     end
   end
 
@@ -183,7 +183,7 @@ module NetHTTPUtils
 
     def request_data *args, &block
       response = get_response *args, &block
-      raise Error.new response.code.to_i, response.body unless response.code[/\A(20\d|3\d\d)\z/]
+      raise Error.new response.body, response.code.to_i unless response.code[/\A(20\d|3\d\d)\z/]
       if response["content-encoding"] == "gzip"
         Zlib::GzipReader.new(StringIO.new(response.body)).read
       else
@@ -198,6 +198,7 @@ end
 
 
 if $0 == __FILE__
+  STDOUT.sync = true
   print "self testing... "
 
   fail unless NetHTTPUtils.request_data("http://httpstat.us/200") == "200 OK"
@@ -211,6 +212,7 @@ if $0 == __FILE__
   fail unless NetHTTPUtils.get_response("http://httpstat.us/400").body == "400 Bad Request"
   fail unless NetHTTPUtils.get_response("http://httpstat.us/404").body == "404 Not Found"
   fail unless NetHTTPUtils.get_response("http://httpstat.us/500").body == "500 Internal Server Error"
+  fail unless NetHTTPUtils.get_response("http://httpstat.us/503").body == "503 Service Unavailable"
   %w{
     http://minus.com/lkP3hgRJd9npi
     http://www.cutehalloweencostumeideas.org/wp-content/uploads/2017/10/Niagara-Falls_04.jpg
