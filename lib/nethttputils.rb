@@ -26,7 +26,7 @@ module NetHTTPUtils
   class << self
 
     # private?
-    def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, max_timeout_retry_delay: 300, patch_request: nil, &block
+    def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, max_timeout_retry_delay: 300, max_sslerror_retry_delay: 300, patch_request: nil, &block
       uri = URI.parse url
       url_query = URI.decode_www_form uri.query || ""
       logger.warn "NetHTTPUtils does not support duplicating query keys" if url_query.map(&:first).uniq!
@@ -75,9 +75,11 @@ module NetHTTPUtils
             uri.host, uri.port,
             use_ssl: uri.scheme == "https",
             verify_mode: OpenSSL::SSL::VERIFY_NONE,
+            **({open_timeout: timeout}), #  if timeout
+            **({read_timeout: timeout}), #  if timeout
           ) do |http|
-            http.read_timeout = timeout #if timeout
-            http.open_timeout = timeout #if timeout
+            # http.open_timeout = timeout   # seems like when opening hangs, this line in unreachable
+            # http.read_timeout = timeout
             http.set_debug_output STDERR if logger.level == Logger::DEBUG # use `logger.debug?`?
             http
           end
@@ -85,7 +87,7 @@ module NetHTTPUtils
           e.message.concat " to #{uri}"
           raise e
           # TODO retry?
-        rescue Errno::EHOSTUNREACH, Errno::ENETUNREACH, Errno::ECONNRESET, SocketError, OpenSSL::SSL::SSLError => e
+        rescue Errno::EHOSTUNREACH, Errno::ENETUNREACH, Errno::ECONNRESET, SocketError => e
           if e.is_a?(SocketError) && e.message.start_with?("getaddrinfo: ")
             e.message.concat ": #{uri.host}"
             raise e
@@ -98,6 +100,11 @@ module NetHTTPUtils
           retry
         rescue Errno::ETIMEDOUT => e
           raise if max_timeout_retry_delay < delay *= 2
+          logger.warn "retrying in #{delay} seconds because of #{e.class} '#{e.message}' at: #{uri}"
+          sleep delay
+          retry
+        rescue OpenSSL::SSL::SSLError => e
+          raise if max_sslerror_retry_delay < delay *= 2
           logger.warn "retrying in #{delay} seconds because of #{e} to #{uri}"
           sleep delay
           retry
@@ -105,11 +112,17 @@ module NetHTTPUtils
       end
       http = start_http[uri]
       do_request = lambda do |request|
+        delay = 5
         response = begin
           http.request request, &block
-        rescue Errno::ECONNRESET, Errno::ECONNREFUSED, Net::ReadTimeout, Net::OpenTimeout, Zlib::BufError, OpenSSL::SSL::SSLError => e
+        rescue Errno::ECONNRESET, Errno::ECONNREFUSED, Net::ReadTimeout, Net::OpenTimeout, Zlib::BufError => e
           logger.error "retrying in 30 seconds because of #{e.class} at: #{request.uri}"
           sleep 30
+          retry
+        rescue OpenSSL::SSL::SSLError => e
+          raise if max_sslerror_retry_delay < delay *= 2
+          logger.error "retrying in #{delay} seconds because of #{e.class} '#{e.message}' at: #{request.uri}"
+          sleep delay
           retry
         end
         # response.instance_variable_set "@nethttputils_close", http.method(:finish)
@@ -227,7 +240,11 @@ if $0 == __FILE__
   end
   begin
     fail NetHTTPUtils.request_data "https://oi64.tinypic.com/29z7oxs.jpg?", timeout: 5, max_timeout_retry_delay: -1
-  rescue Errno::ETIMEDOUT => e
+  rescue Net::OpenTimeout => e
+  end
+  begin
+    fail NetHTTPUtils.request_data "https://bulletinxp.com/curiosity/strange-weather/?", max_sslerror_retry_delay: -1
+  rescue OpenSSL::SSL::SSLError => e
   end
   puts "OK #{__FILE__}"
 end
