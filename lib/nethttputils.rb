@@ -26,7 +26,7 @@ module NetHTTPUtils
   class << self
 
     # private?
-    def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, patch_request: nil, &block
+    def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, max_timeout_retry_delay: 300, patch_request: nil, &block
       uri = URI.parse url
       url_query = URI.decode_www_form uri.query || ""
       logger.warn "NetHTTPUtils does not support duplicating query keys" if url_query.map(&:first).uniq!
@@ -69,6 +69,7 @@ module NetHTTPUtils
         end
       end
       start_http = lambda do |uri|
+        delay = 5
         begin
           Net::HTTP.start(
             uri.host, uri.port,
@@ -95,9 +96,10 @@ module NetHTTPUtils
           logger.warn "retrying in 5 seconds because of #{e.class}: #{e.message}"
           sleep 5
           retry
-        rescue Errno::ETIMEDOUT
-          logger.warn "retrying in 5 minutes because of ETIMEDOUT to #{uri}"
-          sleep 300
+        rescue Errno::ETIMEDOUT => e
+          raise if max_timeout_retry_delay < delay *= 2
+          logger.warn "retrying in #{delay} seconds because of #{e} to #{uri}"
+          sleep delay
           retry
         end
       end
@@ -223,6 +225,9 @@ if $0 == __FILE__
       raise unless e.message.start_with? "getaddrinfo: "
     end
   end
-
+  begin
+    fail NetHTTPUtils.request_data "https://oi64.tinypic.com/29z7oxs.jpg?", timeout: 5, max_timeout_retry_delay: -1
+  rescue Errno::ETIMEDOUT => e
+  end
   puts "OK #{__FILE__}"
 end
