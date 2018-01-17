@@ -91,11 +91,11 @@ module NetHTTPUtils
           if e.is_a?(SocketError) && e.message.start_with?("getaddrinfo: ")
             e.message.concat ": #{uri.host}"
             raise e
-            # logger.warn "retrying in 60 seconds because of #{e.class}: #{e.message}"
+            # logger.warn "retrying in 60 seconds because of #{e.class} '#{e.message}'"
             # sleep 60
             # retry
           end
-          logger.warn "retrying in 5 seconds because of #{e.class}: #{e.message}"
+          logger.warn "retrying in 5 seconds because of #{e.class} '#{e.message}'"
           sleep 5
           retry
         rescue Errno::ETIMEDOUT => e
@@ -105,7 +105,7 @@ module NetHTTPUtils
           retry
         rescue OpenSSL::SSL::SSLError => e
           raise if max_sslerror_retry_delay < delay *= 2
-          logger.warn "retrying in #{delay} seconds because of #{e} to #{uri}"
+          logger.error "retrying in #{delay} seconds because of #{e.class} '#{e.message}' at: #{uri}"
           sleep delay
           retry
         end
@@ -116,7 +116,7 @@ module NetHTTPUtils
         response = begin
           http.request request, &block
         rescue Errno::ECONNRESET, Errno::ECONNREFUSED, Net::ReadTimeout, Net::OpenTimeout, Zlib::BufError => e
-          logger.error "retrying in 30 seconds because of #{e.class} at: #{request.uri}"
+          logger.error "retrying in 30 seconds because of #{e.class} '#{e.message}' at: #{request.uri}"
           sleep 30
           retry
         rescue OpenSSL::SSL::SSLError => e
