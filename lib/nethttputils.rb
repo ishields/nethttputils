@@ -96,7 +96,7 @@ module NetHTTPUtils
           sleep 5
           retry
         rescue Errno::ETIMEDOUT
-          logger.warn "retrying in 5 minutes because of ETIMEDOUT"
+          logger.warn "retrying in 5 minutes because of ETIMEDOUT to #{uri}"
           sleep 300
           retry
         end
