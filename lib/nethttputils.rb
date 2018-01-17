@@ -74,11 +74,11 @@ module NetHTTPUtils
             uri.host, uri.port,
             use_ssl: uri.scheme == "https",
             verify_mode: OpenSSL::SSL::VERIFY_NONE,
-            # read_timeout: 5,
-          ).tap do |http|
+          ) do |http|
             http.read_timeout = timeout #if timeout
             http.open_timeout = timeout #if timeout
             http.set_debug_output STDERR if logger.level == Logger::DEBUG # use `logger.debug?`?
+            http
           end
         rescue Errno::ECONNREFUSED => e
           e.message.concat " to #{uri}"
@@ -110,7 +110,7 @@ module NetHTTPUtils
           sleep 30
           retry
         end
-        response.instance_variable_set "@nethttputils_close", http.method(:finish)
+        # response.instance_variable_set "@nethttputils_close", http.method(:finish)
         # response.singleton_class.instance_eval{ attr_accessor :nethttputils_socket_to_close }
 
         if response.key? "x-ratelimit-userremaining"
@@ -137,7 +137,7 @@ module NetHTTPUtils
              http.port != new_uri.port ||
              http.use_ssl? != (new_uri.scheme == "https")
             logger.debug "changing host from '#{http.address}' to '#{new_host}'"
-            http.finish
+            # http.finish
             http = start_http[new_uri]
           end
           do_request.call prepare_request[new_uri]
@@ -189,8 +189,8 @@ module NetHTTPUtils
       else
         response.body
       end
-    ensure
-      response.instance_variable_get("@nethttputils_close").call if response
+    # ensure
+    #   response.instance_variable_get("@nethttputils_close").call if response
     end
 
   end
