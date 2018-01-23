@@ -46,7 +46,7 @@ module NetHTTPUtils
           patch_request.call uri, form, request if patch_request
           request.basic_auth *auth if auth
           request["cookie"] = [*request["cookie"], cookies.map{ |k, v| "#{k}=#{v}" }].join "; " unless cookies.empty?
-          request.set_form_data form unless form.empty?
+          request.set_form_data form if mtd == :POST && !form.empty?
           if mtd == :POST || mtd == :PATCH
             request["Content-Type"] = case type
               when :form ; "application/x-www-form-urlencoded;charset=UTF-8"
