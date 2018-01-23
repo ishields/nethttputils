@@ -28,9 +28,11 @@ module NetHTTPUtils
     # private?
     def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, max_timeout_retry_delay: 3600, max_sslerror_retry_delay: 3600, patch_request: nil, &block
       uri = URI.parse url
-      url_query = URI.decode_www_form uri.query || ""
-      logger.warn "NetHTTPUtils does not support duplicating query keys" if url_query.map(&:first).uniq!
-      uri.query = URI.encode_www_form Hash[url_query].merge form if :GET == mtd = mtd.upcase
+
+      logger.warn "Warning: query params included `url` are discarded because `:form` isn't empty" if uri.query && !form.empty?
+      # we can't just merge because URI fails to parse such queries as "/?1"
+
+      uri.query = URI.encode_www_form form if :GET == (mtd = mtd.upcase) && !form.empty?
       cookies = {}
       prepare_request = lambda do |uri|
         case mtd.upcase
@@ -215,6 +217,23 @@ end
 if $0 == __FILE__
   STDOUT.sync = true
   print "self testing... "
+
+  require "webrick"
+  server = WEBrick::HTTPServer.new Port: 8000
+  server.mount_proc ?/ do |req, res|
+    # require "pp"
+    # pp req.header
+    # pp req.dup.tap{ |_| _.instance_variable_set "@config", nil }
+    # res.status = WEBrick::HTTPStatus::RC_ACCEPTED
+    res.body = req.unparsed_uri
+  end
+  Thread.abort_on_exception = true
+  Thread.new{ server.start }
+  fail unless "/" == NetHTTPUtils.request_data("http://localhost:8000/")
+  fail unless "/?1" == NetHTTPUtils.request_data("http://localhost:8000/?1")
+  fail unless "/?1=2" == NetHTTPUtils.request_data("http://localhost:8000/?1=2")
+  fail unless "/?1=3" == NetHTTPUtils.request_data("http://localhost:8000/?1=2&3=4", form: {1=>3})
+  server.shutdown
 
   fail unless NetHTTPUtils.request_data("http://httpstat.us/200") == "200 OK"
   [400, 404, 500, 503].each do |code|
