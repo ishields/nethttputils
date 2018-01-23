@@ -5,7 +5,6 @@ require "logger"
 
 
 module NetHTTPUtils
-
   class << self
     attr_accessor :logger
   end
@@ -46,7 +45,7 @@ module NetHTTPUtils
           patch_request.call uri, form, request if patch_request
           request.basic_auth *auth if auth
           request["cookie"] = [*request["cookie"], cookies.map{ |k, v| "#{k}=#{v}" }].join "; " unless cookies.empty?
-          request.set_form_data form if mtd == :POST && !form.empty?
+          request.set_form_data form if !form.empty? && mtd == :POST
           if mtd == :POST || mtd == :PATCH
             request["Content-Type"] = case type
               when :form ; "application/x-www-form-urlencoded;charset=UTF-8"
@@ -217,22 +216,23 @@ end
 if $0 == __FILE__
   STDOUT.sync = true
   print "self testing... "
+  require "pp"
 
   require "webrick"
+  require "json"
   server = WEBrick::HTTPServer.new Port: 8000
   server.mount_proc ?/ do |req, res|
-    # require "pp"
-    # pp req.header
     # pp req.dup.tap{ |_| _.instance_variable_set "@config", nil }
     # res.status = WEBrick::HTTPStatus::RC_ACCEPTED
-    res.body = req.unparsed_uri
+    res.body = JSON.dump [req.unparsed_uri, req.header.keys]
   end
   Thread.abort_on_exception = true
   Thread.new{ server.start }
-  fail unless "/" == NetHTTPUtils.request_data("http://localhost:8000/")
-  fail unless "/?1" == NetHTTPUtils.request_data("http://localhost:8000/?1")
-  fail unless "/?1=2" == NetHTTPUtils.request_data("http://localhost:8000/?1=2")
-  fail unless "/?1=3" == NetHTTPUtils.request_data("http://localhost:8000/?1=2&3=4", form: {1=>3})
+  fail unless JSON.dump(["/", %w{ accept-encoding accept user-agent host connection }]) == NetHTTPUtils.request_data("http://localhost:8000/")
+  fail unless JSON.dump(["/?1", %w{ accept-encoding accept user-agent host connection }]) == NetHTTPUtils.request_data("http://localhost:8000/?1")
+  fail unless JSON.dump(["/?1=2", %w{ accept-encoding accept user-agent host connection }]) == NetHTTPUtils.request_data("http://localhost:8000/?1=2")
+  fail unless JSON.dump(["/?1=3", %w{ accept-encoding accept user-agent host connection }]) == NetHTTPUtils.request_data("http://localhost:8000/?1=2&3=4", form: {1=>3})
+  fail unless JSON.dump(["/", %w{ accept-encoding accept user-agent host content-type connection content-length }]) == NetHTTPUtils.request_data("http://localhost:8000/", :post, form: {1=>2})
   server.shutdown
 
   fail unless NetHTTPUtils.request_data("http://httpstat.us/200") == "200 OK"
