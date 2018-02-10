@@ -99,7 +99,7 @@ module NetHTTPUtils
           logger.warn "retrying in 5 seconds because of #{e.class} '#{e.message}'"
           sleep 5
           retry
-        rescue Errno::ETIMEDOUT => e
+        rescue Errno::ETIMEDOUT, Net::OpenTimeout => e
           raise if max_timeout_retry_delay < delay *= 2
           logger.warn "retrying in #{delay} seconds because of #{e.class} '#{e.message}' at: #{uri}"
           sleep delay
