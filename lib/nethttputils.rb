@@ -209,6 +209,8 @@ module NetHTTPUtils
         Zlib::GzipReader.new(StringIO.new(response.body)).read
       else
         response.body
+      end.tap do |string|
+        string.instance_variable_set :@uri_path, response.uri.path
       end
     # ensure
     #   response.instance_variable_get("@nethttputils_close").call if response

@@ -3,6 +3,6 @@ Gem::Specification.new do |spec|
   spec.summary = "nethttputils"
   spec.author = "Victor Maslov aka Nakilon"
   spec.email = "nakilon@gmail.com"
-  spec.version = "0.1.0.3"
+  spec.version = "0.1.0.4"
   spec.require_path = "lib"
 end
