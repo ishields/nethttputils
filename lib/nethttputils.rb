@@ -89,7 +89,7 @@ module NetHTTPUtils
           raise e
           # TODO retry?
         rescue Errno::EHOSTUNREACH, Errno::ENETUNREACH, Errno::ECONNRESET, SocketError => e
-          if e.is_a?(SocketError) && e.message.start_with?("getaddrinfo: ")
+          if e.is_a?(SocketError) && e.message["getaddrinfo: "]
             e.message.concat ": #{uri.host}"
             raise e
             # logger.warn "retrying in 60 seconds because of #{e.class} '#{e.message}'"
@@ -165,7 +165,7 @@ module NetHTTPUtils
         when "404"
           logger.error "404 at #{request.method} #{request.uri} with body: #{
             response.body.is_a?(Net::ReadAdapter) ? "impossible to reread Net::ReadAdapter -- check the IO you've used in block form" : response.body.tap do |body|
-              body.replace body.strip.gsub(/<script( type="text\/javascript")?>.*?<\/script>/m, "").gsub(/<[^>]*>/, "") if body[/<html[> ]/]
+              body.replace body.strip.gsub(/<script( type="text\/javascript"| src="[^"]+")?>.*?<\/script>/m, "").gsub(/<[^>]*>/, "") if body[/<html[> ]/]
             end.inspect
           }"
           response
@@ -175,7 +175,7 @@ module NetHTTPUtils
         when /\A50\d\z/
           logger.error "#{response.code} at #{request.method} #{request.uri} with body: #{
             response.body.tap do |body|
-              body.replace body.strip.gsub(/<script( type="text\/javascript")?>.*?<\/script>/m, "").gsub(/<[^>]*>/, "") if body[/<html[> ]/]
+              body.replace body.strip.gsub(/<script( type="text\/javascript"| src="[^"]+")?>.*?<\/script>/m, "").gsub(/<[^>]*>/, "") if body[/<html[> ]/]
             end.inspect
           }"
           response
@@ -190,7 +190,7 @@ module NetHTTPUtils
           logger.debug "< header: #{response.to_hash}"
           logger.debug "< body: #{
             response.body.tap do |body|
-              body.replace body.strip.gsub(/<script( type="text\/javascript")?>.*?<\/script>/m, "").gsub(/<[^>]*>/, "") if body[/<html[> ]/]
+              body.replace body.strip.gsub(/<script( type="text\/javascript"| src="[^"]+")?>.*?<\/script>/m, "").gsub(/<[^>]*>/, "") if body[/<html[> ]/]
             end.inspect
           }"
           response
@@ -271,7 +271,7 @@ if $0 == __FILE__
     begin
       fail NetHTTPUtils.request_data url
     rescue SocketError => e
-      raise unless e.message.start_with? "getaddrinfo: "
+      raise unless e.message["getaddrinfo: "]
     end
   end
 
@@ -279,11 +279,12 @@ if $0 == __FILE__
     fail NetHTTPUtils.request_data "https://oi64.tinypic.com/29z7oxs.jpg?", timeout: 5, max_timeout_retry_delay: -1
   rescue Net::OpenTimeout => e
   end
-  begin
-    # https://www.virtualself.co/?
-    fail NetHTTPUtils.request_data "https://bulletinxp.com/curiosity/strange-weather/?", max_sslerror_retry_delay: -1
-  rescue OpenSSL::SSL::SSLError => e
-  end
+  ## this stopped failing on High Sierra
+  # begin
+  #   # https://www.virtualself.co/?
+  #   fail NetHTTPUtils.request_data "https://bulletinxp.com/curiosity/strange-weather/?", max_sslerror_retry_delay: -1
+  # rescue OpenSSL::SSL::SSLError => e
+  # end
 
   puts "OK #{__FILE__}"
 end
