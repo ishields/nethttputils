@@ -24,6 +24,10 @@ module NetHTTPUtils
 
   class << self
 
+    def remove_tags str
+      str.gsub(/<script( type="text\/javascript"| src="[^"]+")?>.*?<\/script>/m, "").gsub(/<[^>]*>/, "").strip
+    end
+
     # private?
     def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, max_timeout_retry_delay: 3600, max_sslerror_retry_delay: 3600, max_econnreset_retry_delay: 3600, max_econnrefused_retry_delay: 3600, patch_request: nil, &block
       uri = URI.parse url
@@ -168,7 +172,7 @@ module NetHTTPUtils
         when "404"
           logger.error "404 at #{request.method} #{request.uri} with body: #{
             response.body.is_a?(Net::ReadAdapter) ? "impossible to reread Net::ReadAdapter -- check the IO you've used in block form" : response.body.tap do |body|
-              body.replace body.strip.gsub(/<script( type="text\/javascript"| src="[^"]+")?>.*?<\/script>/m, "").gsub(/<[^>]*>/, "") if body[/<html[> ]/]
+              body.replace remove_tags body if body[/<html[> ]/]
             end.inspect
           }"
           response
@@ -178,7 +182,7 @@ module NetHTTPUtils
         when /\A50\d\z/
           logger.error "#{response.code} at #{request.method} #{request.uri} with body: #{
             response.body.tap do |body|
-              body.replace body.strip.gsub(/<script( type="text\/javascript"| src="[^"]+")?>.*?<\/script>/m, "").gsub(/<[^>]*>/, "") if body[/<html[> ]/]
+              body.replace remove_tags body if body[/<html[> ]/]
             end.inspect
           }"
           response
@@ -193,7 +197,7 @@ module NetHTTPUtils
           logger.debug "< header: #{response.to_hash}"
           logger.debug "< body: #{
             response.body.tap do |body|
-              body.replace body.strip.gsub(/<script( type="text\/javascript"| src="[^"]+")?>.*?<\/script>/m, "").gsub(/<[^>]*>/, "") if body[/<html[> ]/]
+              body.replace remove_tags body if body[/<html[> ]/]
             end.inspect
           }"
           response
@@ -258,11 +262,12 @@ if $0 == __FILE__
   fail unless NetHTTPUtils.get_response("http://httpstat.us/500").body == "500 Internal Server Error"
   fail unless NetHTTPUtils.get_response("http://httpstat.us/503").body == "503 Service Unavailable"
   %w{
-    https://imgur.com/a/ccccc
+    https://imgur.com/a/cccccc
     https://imgur.com/mM4Dh7Z
   }.each do |url|
     begin
-      fail NetHTTPUtils.request_data url
+      puts NetHTTPUtils.remove_tags NetHTTPUtils.request_data url
+      fail
     rescue NetHTTPUtils::Error => e
       raise unless e.code == 404
     end
