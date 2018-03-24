@@ -25,7 +25,7 @@ module NetHTTPUtils
   class << self
 
     # private?
-    def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, max_timeout_retry_delay: 3600, max_sslerror_retry_delay: 3600, max_econnreset_retry_delay: 3600, patch_request: nil, &block
+    def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, max_timeout_retry_delay: 3600, max_sslerror_retry_delay: 3600, max_econnreset_retry_delay: 3600, max_econnrefused_retry_delay: 3600, patch_request: nil, &block
       uri = URI.parse url
 
       logger.warn "Warning: query params included `url` are discarded because `:form` isn't empty" if uri.query && !form.empty?
@@ -86,8 +86,10 @@ module NetHTTPUtils
           end
         rescue Errno::ECONNREFUSED => e
           e.message.concat " to #{uri}"
-          raise e
-          # TODO retry?
+          raise if max_econnrefused_retry_delay < delay *= 2
+          logger.warn "retrying in #{delay} seconds because of #{e.class} '#{e.message}'"
+          sleep delay
+          retry
         rescue Errno::EHOSTUNREACH, Errno::ENETUNREACH, Errno::ECONNRESET, SocketError => e
           if e.is_a?(SocketError) && e.message["getaddrinfo: "]
             e.message.concat ": #{uri.host}"
@@ -117,6 +119,7 @@ module NetHTTPUtils
         response = begin
           http.request request, &block
         rescue Errno::ECONNREFUSED, Net::ReadTimeout, Net::OpenTimeout, Zlib::BufError => e
+          # check that 2.3 already does some handling
           logger.error "retrying in 30 seconds because of #{e.class} '#{e.message}' at: #{request.uri}"
           sleep 30
           retry
