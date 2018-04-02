@@ -29,7 +29,7 @@ module NetHTTPUtils
     end
 
     # private?
-    def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, max_timeout_retry_delay: 3600, max_sslerror_retry_delay: 3600, max_econnreset_retry_delay: 3600, max_econnrefused_retry_delay: 3600, patch_request: nil, &block
+    def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, max_timeout_retry_delay: 3600, max_sslerror_retry_delay: 3600, max_read_retry_delay: 3600, max_econnrefused_retry_delay: 3600, patch_request: nil, &block
       uri = URI.parse url
 
       logger.warn "Warning: query params included `url` are discarded because `:form` isn't empty" if uri.query && !form.empty?
@@ -119,21 +119,11 @@ module NetHTTPUtils
       end
       http = start_http[uri]
       do_request = lambda do |request|
-        delay = 5
+        delay = 1
         response = begin
           http.request request, &block
-        rescue Errno::ECONNREFUSED, Net::ReadTimeout, Net::OpenTimeout, Zlib::BufError => e
-          # check that 2.3 already does some handling
-          logger.error "retrying in 30 seconds because of #{e.class} '#{e.message}' at: #{request.uri}"
-          sleep 30
-          retry
-        rescue Errno::ECONNRESET => e
-          raise if max_econnreset_retry_delay < delay *= 2
-          logger.error "retrying in #{delay} seconds because of #{e.class} '#{e.message}' at: #{request.uri}"
-          sleep delay
-          retry
-        rescue OpenSSL::SSL::SSLError => e
-          raise if max_sslerror_retry_delay < delay *= 2
+        rescue Errno::ECONNREFUSED, Net::ReadTimeout, Net::OpenTimeout, Zlib::BufError, Errno::ECONNRESET, OpenSSL::SSL::SSLError => e
+          raise if max_read_retry_delay < delay *= 2
           logger.error "retrying in #{delay} seconds because of #{e.class} '#{e.message}' at: #{request.uri}"
           sleep delay
           retry
