@@ -149,7 +149,7 @@ module NetHTTPUtils
         case response.code
         when /\A3\d\d\z/
           logger.info "redirect: #{response["location"]}"
-          new_uri = URI.join(request.uri, response["location"])
+          new_uri = URI.join request.uri, URI.escape(response["location"])
           new_host = new_uri.host
           if http.address != new_host ||
              http.port != new_uri.port ||
