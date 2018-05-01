@@ -30,7 +30,7 @@ module NetHTTPUtils
 
     # private?
     def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, max_timeout_retry_delay: 3600, max_sslerror_retry_delay: 3600, max_read_retry_delay: 3600, max_econnrefused_retry_delay: 3600, patch_request: nil, &block
-      uri = URI.parse url
+      uri = URI.parse URI.escape url
 
       logger.warn "Warning: query params included `url` are discarded because `:form` isn't empty" if uri.query && !form.empty?
       # we can't just merge because URI fails to parse such queries as "/?1"
