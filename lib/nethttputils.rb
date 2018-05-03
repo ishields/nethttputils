@@ -28,7 +28,7 @@ module NetHTTPUtils
       str.gsub(/<script( type="text\/javascript"| src="[^"]+")?>.*?<\/script>/m, "").gsub(/<[^>]*>/, "").strip
     end
 
-    # private?
+    # TODO: make it private?
     def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, max_timeout_retry_delay: 3600, max_sslerror_retry_delay: 3600, max_read_retry_delay: 3600, max_econnrefused_retry_delay: 3600, patch_request: nil, &block
       uri = URI.parse URI.escape url
 
