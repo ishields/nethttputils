@@ -29,7 +29,7 @@ module NetHTTPUtils
     end
 
     # TODO: make it private?
-    def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, max_timeout_retry_delay: 3600, max_sslerror_retry_delay: 3600, max_read_retry_delay: 3600, max_econnrefused_retry_delay: 3600, patch_request: nil, &block
+    def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, max_timeout_retry_delay: 3600, max_sslerror_retry_delay: 3600, max_read_retry_delay: 3600, max_econnrefused_retry_delay: 3600, max_socketerror_retry_delay: 3600, patch_request: nil, &block
       uri = URI.parse URI.escape url
 
       logger.warn "Warning: query params included `url` are discarded because `:form` isn't empty" if uri.query && !form.empty?
@@ -89,21 +89,24 @@ module NetHTTPUtils
             http
           end
         rescue Errno::ECONNREFUSED => e
-          e.message.concat " to #{uri}"
-          raise if max_econnrefused_retry_delay < delay *= 2
+          if max_econnrefused_retry_delay < delay *= 2
+            e.message.concat " to #{uri}"
+            raise
+          end
           logger.warn "retrying in #{delay} seconds because of #{e.class} '#{e.message}'"
           sleep delay
           retry
-        rescue Errno::EHOSTUNREACH, Errno::ENETUNREACH, Errno::ECONNRESET, SocketError => e
-          if e.is_a?(SocketError) && e.message["getaddrinfo: "]
-            e.message.concat ": #{uri.host}"
-            raise e
-            # logger.warn "retrying in 60 seconds because of #{e.class} '#{e.message}'"
-            # sleep 60
-            # retry
-          end
+        rescue Errno::EHOSTUNREACH, Errno::ENETUNREACH, Errno::ECONNRESET => e
           logger.warn "retrying in 5 seconds because of #{e.class} '#{e.message}'"
           sleep 5
+          retry
+        rescue SocketError => e
+          if max_socketerror_retry_delay < delay *= 2
+            e.message.concat " to #{uri}"
+            raise e
+          end
+          logger.warn "retrying in #{delay} seconds because of #{e.class} '#{e.message}' at: #{uri}"
+          sleep delay
           retry
         rescue Errno::ETIMEDOUT, Net::OpenTimeout => e
           raise if max_timeout_retry_delay < delay *= 2
@@ -267,7 +270,7 @@ if $0 == __FILE__
     http://www.cutehalloweencostumeideas.org/wp-content/uploads/2017/10/Niagara-Falls_04.jpg
   }.each do |url|
     begin
-      fail NetHTTPUtils.request_data url
+      fail NetHTTPUtils.request_data url, max_socketerror_retry_delay: -1
     rescue SocketError => e
       raise unless e.message["getaddrinfo: "]
     end
