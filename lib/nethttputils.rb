@@ -122,7 +122,7 @@ module NetHTTPUtils
       end
       http = start_http[uri]
       do_request = lambda do |request|
-        delay = 1
+        delay = 5
         response = begin
           http.request request, &block
         rescue Errno::ECONNREFUSED, Net::ReadTimeout, Net::OpenTimeout, Zlib::BufError, Errno::ECONNRESET, OpenSSL::SSL::SSLError => e
@@ -273,6 +273,14 @@ if $0 == __FILE__
       fail NetHTTPUtils.request_data url, max_socketerror_retry_delay: -1
     rescue SocketError => e
       raise unless e.message["getaddrinfo: "]
+    end
+  end
+  %w{
+    http://www.aeronautica.difesa.it/organizzazione/REPARTI/divolo/PublishingImages/6%C2%B0%20Stormo/2013-decollo%20al%20tramonto%20REX%201280.jpg
+  }.each do |url|   # TODO: test that setting user-agent header fixes this timeout
+    begin
+      fail NetHTTPUtils.request_data url, max_read_retry_delay: -1
+    rescue Net::ReadTimeout
     end
   end
 
