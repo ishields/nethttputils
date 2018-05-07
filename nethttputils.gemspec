@@ -1,6 +1,6 @@
 Gem::Specification.new do |spec|
   spec.name         = "nethttputils"
-  spec.version      = "0.2.1.1"
+  spec.version      = "0.2.2.0"
   spec.summary      = "this tool is like a pet that I adopted young and now I depend on, sorry"
   spec.description = <<-EOF
     Back in 2015 I was a guy automating things at my job and two scripts had a common need --
