@@ -35,9 +35,10 @@ module NetHTTPUtils
         url
       rescue URI::InvalidURIError
         URI.escape url
-      end
+      end unless uri.is_a? URI::HTTP
 
-      logger.warn "Warning: query params included `url` are discarded because `:form` isn't empty" if uri.query && !form.empty?
+
+      logger.warn "Warning: query params included in `url` argument are discarded because `:form` isn't empty" if uri.query && !form.empty?
       # we can't just merge because URI fails to parse such queries as "/?1"
 
       uri.query = URI.encode_www_form form if :GET == (mtd = mtd.upcase) && !form.empty?
@@ -54,12 +55,17 @@ module NetHTTPUtils
           patch_request.call uri, form, request if patch_request
           request.basic_auth *auth if auth
           request["cookie"] = [*request["cookie"], cookies.map{ |k, v| "#{k}=#{v}" }].join "; " unless cookies.empty?
-          request.set_form_data form if !form.empty? && mtd == :POST
-          if mtd == :POST || mtd == :PATCH
-            request["Content-Type"] = case type
-              when :form ; "application/x-www-form-urlencoded;charset=UTF-8"
-              when :json ; request.body = JSON.dump form     # yes this overwrites form data set few lines higher
-                           "application/json"
+          # pp Object.instance_method(:method).bind(request).call(:set_form).source_location
+          if (mtd == :POST || mtd == :PATCH) && !form.empty?
+            case type
+              when :form ; if form.any?{ |k, v| v.respond_to? :to_path }
+                             request.set_form form, "multipart/form-data"
+                           else
+                             request.set_form_data form
+                             request.content_type = "application/x-www-form-urlencoded;charset=UTF-8"
+                           end
+              when :json ; request.body = JSON.dump form
+                           request.content_type = "application/json"
               else       ; raise "unknown content-type '#{type}'"
             end
           end
