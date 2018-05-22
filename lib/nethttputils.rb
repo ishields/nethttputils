@@ -58,24 +58,33 @@ module NetHTTPUtils
           # pp Object.instance_method(:method).bind(request).call(:set_form).source_location
           if (mtd == :POST || mtd == :PATCH) && !form.empty?
             case type
+              when :json ; request.body = JSON.dump form
+                           request.content_type = "application/json"
               when :form ; if form.any?{ |k, v| v.respond_to? :to_path }
                              request.set_form form, "multipart/form-data"
                            else
                              request.set_form_data form
                              request.content_type = "application/x-www-form-urlencoded;charset=UTF-8"
                            end
-              when :json ; request.body = JSON.dump form
-                           request.content_type = "application/json"
               else       ; raise "unknown content-type '#{type}'"
             end
           end
           header.each{ |k, v| request[k.to_s] = v }
 
-          logger.info "> #{request} #{request.path}"
+          logger.info "> #{request.class} #{uri.host} #{request.path}"
           next unless logger.debug?
-          logger.debug "curl -vsSL -o /dev/null #{request.each_header.map{ |k, v| "-H \"#{k}: #{v}\" " unless k == "host" }.join}#{url.gsub "&", "\\\\&"}"
+          logger.debug "content-type: #{request.content_type}" unless mtd == :GET
+          curl_form = case request.content_type
+            when "application/json" ; "-d #{JSON.dump form} "
+            when "multipart/form-data" ; form.map{ |k, v| "-F \"#{k}=#{v.respond_to?(:to_path) ? "@#{v.to_path}" : v}\" " }.join
+            when "application/x-www-form-urlencoded" ; "-d \"#{URI.encode_www_form form}\" "
+            else ; mtd == :GET ? "" : fail("unknown content-type '#{request.content_type}'")
+          end
+          logger.debug "curl -vsSL -o /dev/null #{
+            request.each_header.map{ |k, v| "-H \"#{k}: #{v}\" " unless k == "host" }.join
+          }#{curl_form}#{url.gsub "&", "\\\\&"}"
           logger.debug "> header: #{request.each_header.to_a}"
-          logger.debug "> body: #{request.body.inspect.tap{ |body| body[100..-1] = "..." if body.size > 100 }}"
+          logger.debug "> body: #{request.body.inspect.tap{ |body| body[997..-1] = "..." if body.size > 500 }}"
           stack = caller.reverse.map do |level|
             /((?:[^\/:]+\/)?[^\/:]+):([^:]+)/.match(level).captures
           end.chunk(&:first).map do |file, group|
@@ -96,7 +105,18 @@ module NetHTTPUtils
           ) do |http|
             # http.open_timeout = timeout   # seems like when opening hangs, this line in unreachable
             # http.read_timeout = timeout
-            http.set_debug_output STDERR if logger.level == Logger::DEBUG # use `logger.debug?`?
+            http.set_debug_output( Object.new.tap do |obj|
+              obj.instance_eval do
+                def << msg
+                  @@buffer ||= "[Net::HTTP debug] "
+                  @@buffer.concat msg
+                  @@buffer = @@buffer[0...997] + "..." if @@buffer.size > 500
+                  return unless @@buffer.end_with? ?\n
+                  NetHTTPUtils.logger.debug @@buffer.sub ?\n, "  "
+                  @@buffer = nil
+                end
+              end
+            end ) if logger.level == Logger::DEBUG # use `logger.debug?`?
             http
           end
         rescue Errno::ECONNREFUSED => e
@@ -209,7 +229,7 @@ module NetHTTPUtils
       end
       do_request[prepare_request[uri]].tap do |response|
         cookies.each{ |k, v| response.add_field "Set-Cookie", "#{k}=#{v};" }
-        logger.debug response.to_hash
+        logger.debug "< header: #{response.to_hash}"
       end
     end
 
