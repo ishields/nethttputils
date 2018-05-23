@@ -25,7 +25,9 @@ module NetHTTPUtils
   class << self
 
     def remove_tags str
-      str.gsub(/<script( type="text\/javascript"| src="[^"]+")?>.*?<\/script>/m, "").gsub(/<[^>]*>/, "").strip
+      str.gsub(/<script( [a-z]+="[^"]*")*>.*?<\/script>/m, "").
+          gsub(/<style( type="text\/css")?>.*?<\/style>/m, "").
+          gsub(/<[^>]*>/, "").split(?\n).map(&:strip).reject(&:empty?).join(?\n)
     end
 
     # TODO: make it private?
