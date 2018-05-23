@@ -195,9 +195,15 @@ module NetHTTPUtils
           do_request.call prepare_request[new_uri]
         when "404"
           logger.error "404 at #{request.method} #{request.uri} with body: #{
-            response.body.is_a?(Net::ReadAdapter) ? "impossible to reread Net::ReadAdapter -- check the IO you've used in block form" : response.body.tap do |body|
-              body.replace remove_tags body if body[/<html[> ]/]
-            end.inspect
+            if response.body.is_a? Net::ReadAdapter
+              "impossible to reread Net::ReadAdapter -- check the IO you've used in block form"
+            elsif response.to_hash["content-type"] == ["image/png"]
+              response.to_hash["content-type"].to_s
+            else
+              response.body.tap do |body|
+                body.replace remove_tags body if body[/<html[> ]/]
+              end.inspect
+            end
           }"
           response
         when "429"
@@ -235,7 +241,10 @@ module NetHTTPUtils
 
     def request_data *args, &block
       response = get_response *args, &block
-      raise Error.new response.body, response.code.to_i unless response.code[/\A(20\d|3\d\d)\z/]
+      raise Error.new(
+        (response.to_hash["content-type"] == ["image/png"] ? response.to_hash["content-type"] : response.body),
+        response.code.to_i
+      ) unless response.code[/\A(20\d|3\d\d)\z/]
       if response["content-encoding"] == "gzip"
         Zlib::GzipReader.new(StringIO.new(response.body)).read
       else
@@ -285,15 +294,18 @@ if $0 == __FILE__
   fail unless NetHTTPUtils.get_response("http://httpstat.us/404").body == "404 Not Found"
   fail unless NetHTTPUtils.get_response("http://httpstat.us/500").body == "500 Internal Server Error"
   fail unless NetHTTPUtils.get_response("http://httpstat.us/503").body == "503 Service Unavailable"
-  %w{
-    https://imgur.com/a/cccccc
-    https://imgur.com/mM4Dh7Z
-  }.each do |url|
+  NetHTTPUtils.logger.level = Logger::FATAL
+  [
+    ["https://imgur.com/a/cccccc"],
+    ["https://imgur.com/mM4Dh7Z"],
+    ["https://i.redd.it/si758zk7r5xz.jpg", "HTTP error #404 [\"image/png\"]"],
+  ].each do |url, expectation|
     begin
       puts NetHTTPUtils.remove_tags NetHTTPUtils.request_data url
       fail
     rescue NetHTTPUtils::Error => e
-      raise unless e.code == 404
+      raise e.code.inspect unless e.code == 404
+      raise e.to_s if e.to_s != expectation if expectation
     end
   end
   %w{
