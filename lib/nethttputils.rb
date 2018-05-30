@@ -167,15 +167,24 @@ module NetHTTPUtils
         # response.instance_variable_set "@nethttputils_close", http.method(:finish)
         # response.singleton_class.instance_eval{ attr_accessor :nethttputils_socket_to_close }
 
-        if response.key? "x-ratelimit-userremaining"
-          c = response.fetch("x-ratelimit-userremaining").to_i
-          logger.debug "x-ratelimit-userremaining: #{c}"
-          t = response.fetch("x-ratelimit-clientremaining").to_i
-          logger.debug "x-ratelimit-clientremaining: #{t}"
-          unless 100 < c
-            a = response.fetch("x-timer")[/\d+/].to_i
-            b = response.fetch("x-ratelimit-userreset").to_i
-            t = (b - a + 1).fdiv c
+        remaining, reset_time, current_timestamp = if response.key? "x-ratelimit-userremaining"
+          logger.debug "x-ratelimit-clientremaining: #{response.fetch("x-ratelimit-clientremaining").to_i}"
+          [
+            response.fetch("x-ratelimit-userremaining").to_i,
+            response.fetch("x-ratelimit-userreset").to_i,
+            response.fetch("x-timer")[/\d+/].to_i,
+          ]
+        elsif response.key? "x-rate-limit-remaining"
+          [
+            response.fetch("x-rate-limit-remaining").to_i,
+            response.fetch("x-rate-limit-reset").to_i,
+            Time.now.to_i,
+          ]
+        end
+        if remaining
+          logger.debug "x-remaining: #{remaining}"
+          if remaining <= 100
+            t = (reset_time - current_timestamp + 1).fdiv remaining
             logger.warn "x-ratelimit sleep #{t} seconds"
             sleep t
           end
