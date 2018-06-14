@@ -82,11 +82,12 @@ module NetHTTPUtils
             when "application/x-www-form-urlencoded" ; "-d \"#{URI.encode_www_form form}\" "
             else ; mtd == :GET ? "" : fail("unknown content-type '#{request.content_type}'")
           end
-          logger.debug "curl -vsSL -o /dev/null #{
+          logger.debug "curl -vsSL --compressed -o /dev/null #{
             request.each_header.map{ |k, v| "-H \"#{k}: #{v}\" " unless k == "host" }.join
-          }#{curl_form}#{url.gsub "&", "\\\\&"}"
+          }#{curl_form}'#{url.gsub "&", "\\\\&"}#{"?#{uri.query}" if uri.query && uri.query.empty?}'"
           logger.debug "> header: #{request.each_header.to_a}"
           logger.debug "> body: #{request.body.inspect.tap{ |body| body[997..-1] = "..." if body.size > 500 }}"
+          # TODO this is buggy -- mixes lines from different files into one line
           stack = caller.reverse.map do |level|
             /((?:[^\/:]+\/)?[^\/:]+):([^:]+)/.match(level).captures
           end.chunk(&:first).map do |file, group|
