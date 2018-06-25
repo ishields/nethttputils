@@ -26,7 +26,7 @@ module NetHTTPUtils
 
     def remove_tags str
       str.gsub(/<script( [a-z]+="[^"]*")*>.*?<\/script>/m, "").
-          gsub(/<style( type="text\/css")?>.*?<\/style>/m, "").
+          gsub(/<style( [a-z]+="[^"]*")*>.*?<\/style>/m, "").
           gsub(/<[^>]*>/, "").split(?\n).map(&:strip).reject(&:empty?).join(?\n)
     end
 
@@ -295,7 +295,7 @@ if $0 == __FILE__
   server.shutdown
 
   fail unless NetHTTPUtils.request_data("http://httpstat.us/200") == "200 OK"
-  [400, 404, 500, 503].each do |code|
+  [400, 404, 500, 502, 503].each do |code|
     begin
       fail NetHTTPUtils.request_data "http://httpstat.us/#{code}"
     rescue NetHTTPUtils::Error => e
@@ -305,6 +305,7 @@ if $0 == __FILE__
   fail unless NetHTTPUtils.get_response("http://httpstat.us/400").body == "400 Bad Request"
   fail unless NetHTTPUtils.get_response("http://httpstat.us/404").body == "404 Not Found"
   fail unless NetHTTPUtils.get_response("http://httpstat.us/500").body == "500 Internal Server Error"
+  fail unless NetHTTPUtils.get_response("http://httpstat.us/502").body == "502 Bad Gateway"
   fail unless NetHTTPUtils.get_response("http://httpstat.us/503").body == "503 Service Unavailable"
   NetHTTPUtils.logger.level = Logger::FATAL
   [
