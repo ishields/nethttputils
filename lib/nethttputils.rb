@@ -45,7 +45,7 @@ module NetHTTPUtils
 
       uri.query = URI.encode_www_form form if :GET == (mtd = mtd.upcase) && !form.empty?
       cookies = {}
-      prepare_request = lambda do |uri|
+      prepare_request = lambda do |uri, mtd = :GET, form = {}|
         case mtd.upcase
           when :GET    ; Net::HTTP::Get
           when :POST   ; Net::HTTP::Post
@@ -56,7 +56,6 @@ module NetHTTPUtils
         end.new(uri).tap do |request| # somehow Get eats even raw url, not URI object
           patch_request.call uri, form, request if patch_request
           request.basic_auth *auth if auth
-          request["cookie"] = [*request["cookie"], cookies.map{ |k, v| "#{k}=#{v}" }].join "; " unless cookies.empty?
           # pp Object.instance_method(:method).bind(request).call(:set_form).source_location
           if (mtd == :POST || mtd == :PATCH) && !form.empty?
             case type
@@ -72,6 +71,7 @@ module NetHTTPUtils
             end
           end
           header.each{ |k, v| request[k.to_s] = v }
+          request["cookie"] = [*request["cookie"], cookies.map{ |k, v| "#{k}=#{v}" }].join "; " unless cookies.empty?
 
           logger.info "> #{request.class} #{uri.host} #{request.path}"
           next unless logger.debug?
@@ -191,7 +191,12 @@ module NetHTTPUtils
           end
         end
 
-        response.to_hash.fetch("set-cookie", []).each{ |c| k, v = c.split(?=); cookies[k] = v[/[^;]+/] }
+        response.to_hash.fetch("set-cookie", []).each do |c|
+          k, v = c.split(?=)
+          logger.debug "set-cookie: #{k}=#{v[/[^;]+/]}"
+          cookies.store k, v[/[^;]+/]
+        end
+        logger.debug "< header: #{response.to_hash}"
         case response.code
         when /\A3\d\d\z/
           logger.info "redirect: #{response["location"]}"
@@ -236,7 +241,6 @@ module NetHTTPUtils
           } from #{
             [__FILE__, caller.map{ |i| i[/(?<=:)\d+/] }].join ?:
           }"
-          logger.debug "< header: #{response.to_hash}"
           logger.debug "< body: #{
             response.body.tap do |body|
               body.replace remove_tags body if body[/<html[> ]/]
@@ -245,7 +249,7 @@ module NetHTTPUtils
           response
         end
       end
-      do_request[prepare_request[uri]].tap do |response|
+      do_request[prepare_request[uri, mtd, form]].tap do |response|
         cookies.each{ |k, v| response.add_field "Set-Cookie", "#{k}=#{v};" }
         logger.debug "< header: #{response.to_hash}"
       end
@@ -263,6 +267,7 @@ module NetHTTPUtils
         response.body
       end.tap do |string|
         string.instance_variable_set :@uri_path, response.uri.path
+        string.instance_variable_set :@header, response.to_hash
       end
     # ensure
     #   response.instance_variable_get("@nethttputils_close").call if response
