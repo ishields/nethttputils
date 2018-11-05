@@ -32,13 +32,13 @@ module NetHTTPUtils
 
     # TODO: make it private?
     def get_response url, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, max_timeout_retry_delay: 3600, max_sslerror_retry_delay: 3600, max_read_retry_delay: 3600, max_econnrefused_retry_delay: 3600, max_socketerror_retry_delay: 3600, patch_request: nil, &block
+      uri = url
       uri = URI.parse begin
         URI url
         url
       rescue URI::InvalidURIError
         URI.escape url
-      end unless uri.is_a? URI::HTTP
-
+      end unless url.is_a? URI::HTTP
 
       logger.warn "Warning: query params included in `url` argument are discarded because `:form` isn't empty" if uri.query && !form.empty?
       # we can't just merge because URI fails to parse such queries as "/?1"
@@ -338,9 +338,10 @@ if $0 == __FILE__
   end
   %w{
     http://www.aeronautica.difesa.it/organizzazione/REPARTI/divolo/PublishingImages/6%C2%B0%20Stormo/2013-decollo%20al%20tramonto%20REX%201280.jpg
-  }.each do |url|   # TODO: test that setting user-agent header fixes this timeout
+  }.each do |url|
     begin
-      fail NetHTTPUtils.request_data url, timeout: 5, max_read_retry_delay: -1
+      NetHTTPUtils.request_data url, timeout: 5, max_read_retry_delay: -1
+      fail
     rescue Net::ReadTimeout
     end
   end
