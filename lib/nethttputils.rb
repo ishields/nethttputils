@@ -310,7 +310,7 @@ if $0 == __FILE__
   server.mount_proc ?/ do |req, res|
     stack.push req.request_method
   end
-  Thread.new{ server.start }
+  t = Thread.new{ server.start }
   NetHTTPUtils.start_http("http://localhost:8000/")
   fail unless stack == %w{ }
   stack.clear
@@ -321,6 +321,7 @@ if $0 == __FILE__
   fail unless stack == %w{ HEAD GET }
   server.shutdown
 
+  t.join  # Address already in use - bind(2) for [::]:8000 (Errno::EADDRINUSE)
   server = WEBrick::HTTPServer.new Port: 8000
   server.mount_proc ?/ do |req, res|
     # pp req.dup.tap{ |_| _.instance_variable_set "@config", nil }
