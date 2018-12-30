@@ -300,8 +300,27 @@ if $0 == __FILE__
   print "self testing... "
   require "pp"
 
+
   require "webrick"
   require "json"
+  Thread.abort_on_exception = true
+
+  server = WEBrick::HTTPServer.new Port: 8000
+  stack = []
+  server.mount_proc ?/ do |req, res|
+    stack.push req.request_method
+  end
+  Thread.new{ server.start }
+  NetHTTPUtils.start_http("http://localhost:8000/")
+  fail unless stack == %w{ }
+  stack.clear
+  NetHTTPUtils.start_http("http://localhost:8000/").head("/")
+  fail unless stack == %w{ HEAD }
+  stack.clear
+  NetHTTPUtils.request_data("http://localhost:8000/")
+  fail unless stack == %w{ HEAD GET }
+  server.shutdown
+
   server = WEBrick::HTTPServer.new Port: 8000
   server.mount_proc ?/ do |req, res|
     # pp req.dup.tap{ |_| _.instance_variable_set "@config", nil }
@@ -316,6 +335,7 @@ if $0 == __FILE__
   fail unless JSON.dump(["/?1=3", %w{ accept-encoding accept user-agent host connection }]) == NetHTTPUtils.request_data("http://localhost:8000/?1=2&3=4", form: {1=>3})
   fail unless JSON.dump(["/", %w{ accept-encoding accept user-agent host content-type connection content-length }]) == NetHTTPUtils.request_data("http://localhost:8000/", :post, form: {1=>2})
   server.shutdown
+
 
   fail unless NetHTTPUtils.request_data("http://httpstat.us/200") == "200 OK"
   [400, 404, 500, 502, 503].each do |code|
