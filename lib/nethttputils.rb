@@ -30,15 +30,14 @@ module NetHTTPUtils
           gsub(/<[^>]*>/, "").split(?\n).map(&:strip).reject(&:empty?).join(?\n)
     end
 
-    def start_http url, timeout = 30, max_start_http_retry_delay = 3600
-      fail if url.is_a? URI::HTTP
+    def start_http url, max_start_http_retry_delay = 3600, timeout = 30
       uri = url
       uri = URI.parse begin
         URI url
         url
       rescue URI::InvalidURIError
         URI.escape url
-      end
+      end unless url.is_a? URI::HTTP
       delay = 5
       begin
         Net::HTTP.start(
@@ -95,7 +94,7 @@ module NetHTTPUtils
         sleep delay
         retry
       end.tap do |http|
-        http.instance_variable_set "@uri", uri
+        http.instance_variable_set :@uri, uri
         http.define_singleton_method :read do |mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30,
             max_read_retry_delay: 3600,
             patch_request: nil,
@@ -106,10 +105,11 @@ module NetHTTPUtils
           logger.warn "Warning: query params included in `url` argument are discarded because `:form` isn't empty" if uri.query && !form.empty?
           # we can't just merge because URI fails to parse such queries as "/?1"
 
-          uri.query = URI.encode_www_form form if :GET == (mtd = mtd.upcase) && !form.empty?
+          uri.query = URI.encode_www_form form if %i{ HEAD GET }.include?(mtd = mtd.upcase) && !form.empty?
           cookies = {}
-          prepare_request = lambda do |uri, mtd = :GET, form = {}|
+          prepare_request = lambda do |uri|
             case mtd.upcase
+              when :HEAD   ; Net::HTTP::Head
               when :GET    ; Net::HTTP::Get
               when :POST   ; Net::HTTP::Post
               when :PUT    ; Net::HTTP::Put
@@ -140,12 +140,12 @@ module NetHTTPUtils
 
               logger.info "> #{request.class} #{uri.host} #{request.path}"
               next unless logger.debug?
-              logger.debug "content-type: #{request.content_type}" unless mtd == :GET
+              logger.debug "content-length: #{request.content_length.to_i}, content-type: #{request.content_type}" unless %i{ HEAD GET }.include? mtd
               curl_form = case request.content_type
                 when "application/json" ; "-d #{JSON.dump form} "
                 when "multipart/form-data" ; form.map{ |k, v| "-F \"#{k}=#{v.respond_to?(:to_path) ? "@#{v.to_path}" : v}\" " }.join
                 when "application/x-www-form-urlencoded" ; "-d \"#{URI.encode_www_form form}\" "
-                else ; mtd == :GET ? "" : fail("unknown content-type '#{request.content_type}'")
+                else %i{ HEAD GET }.include?(mtd) ? "" : fail("unknown content-type '#{request.content_type}'")
               end
               logger.debug "curl -vsSL --compressed -o /dev/null #{
                 request.each_header.map{ |k, v| "-H \"#{k}: #{v}\" " unless k == "host" }.join
@@ -161,7 +161,7 @@ module NetHTTPUtils
               logger.debug stack.join " -> "
             end
           end
-          http = NetHTTPUtils.start_http url, timeout, max_start_http_retry_delay
+          http = NetHTTPUtils.start_http url, max_start_http_retry_delay, timeout
           do_request = lambda do |request|
             delay = 5
             response = begin
@@ -214,7 +214,7 @@ module NetHTTPUtils
                  http.use_ssl? != (new_uri.scheme == "https")
                 logger.debug "changing host from '#{http.address}' to '#{new_host}'"
                 # http.finish
-                http = start_http new_uri, timeout, max_start_http_retry_delay
+                http = NetHTTPUtils.start_http new_uri, max_start_http_retry_delay, timeout
               end
               do_request.call prepare_request[new_uri]
             when "404"
@@ -256,10 +256,10 @@ module NetHTTPUtils
               response
             end
           end
-          do_request[prepare_request[uri, mtd, form]].tap do |response|
-            cookies.each{ |k, v| response.add_field "Set-Cookie", "#{k}=#{v};" }
-            logger.debug "< header: #{response.to_hash}"
-          end.body
+          response = do_request[prepare_request[uri]]
+          cookies.each{ |k, v| response.add_field "Set-Cookie", "#{k}=#{v};" }
+          logger.debug "< header: #{response.to_hash}"
+          (response.body || "").tap{ |r| r.instance_variable_set :@last_response, response }
 
         end
       end
@@ -269,23 +269,27 @@ module NetHTTPUtils
         max_start_http_retry_delay: 3600,
         max_read_retry_delay: 3600,
         patch_request: nil, &block
-      http = start_http http, timeout, max_start_http_retry_delay unless http.is_a? Net::HTTP
+      http = start_http http, max_start_http_retry_delay, timeout unless http.is_a? Net::HTTP
       path = http.instance_variable_get(:@uri).path
-      head = http.head path
-      raise Error.new(
-        (head.to_hash["content-type"] == ["image/png"] ? head.to_hash["content-type"] : head.body),
-        head.code.to_i
-      ) unless head.code[/\A(20\d|3\d\d)\z/]
+      if mtd == :GET
+        head = http.head path, header
+        raise Error.new(
+          (head.to_hash["content-type"] == ["image/png"] ? head.to_hash["content-type"] : head.body),
+          head.code.to_i
+        ) unless head.code[/\A(20\d|3\d\d)\z/]
+      end
       body = http.read mtd, type, form: form, header: header, auth: auth, timeout: timeout,
         max_read_retry_delay: max_read_retry_delay,
         patch_request: patch_request, &block
-      if head.to_hash["content-encoding"] == "gzip"
+      last_response = body.instance_variable_get :@last_response
+      if last_response.to_hash["content-encoding"] == "gzip"
         Zlib::GzipReader.new(StringIO.new(body)).read
       else
         body
       end.tap do |string|
-        string.instance_variable_set :@uri_path, path
-        string.instance_variable_set :@header, head.to_hash
+        string.instance_variable_set :@code, last_response.code
+        string.instance_variable_set :@uri_path, path   # useless?
+        string.instance_variable_set :@header, last_response.to_hash
       end
     # ensure
     #   response.instance_variable_get("@nethttputils_close").call if response
@@ -320,6 +324,10 @@ if $0 == __FILE__
   NetHTTPUtils.request_data("http://localhost:8000/")
   fail unless stack == %w{ HEAD GET }
   server.shutdown
+
+  # TODO: test that HEAD method request goes through redirects
+  # TODO: test for `NetHTTPUtils.request_data "...", :head
+  # TODO: request the HEAD only if mtd == :GET
 
   t.join  # Address already in use - bind(2) for [::]:8000 (Errno::EADDRINUSE)
   server = WEBrick::HTTPServer.new Port: 8000
