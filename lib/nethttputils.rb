@@ -136,7 +136,7 @@ module NetHTTPUtils
                   else       ; raise "unknown content-type '#{type}'"
                 end
               end
-              header.each{ |k, v| request[k.to_s] = v }
+              header.each{ |k, v| request[k.to_s] = v.first }
               request["cookie"] = [*request["cookie"], cookies.map{ |k, v| "#{k}=#{v}" }].join "; " unless cookies.empty?
 
               logger.info "> #{request.class} #{uri.host} #{request.path}"
@@ -220,8 +220,10 @@ module NetHTTPUtils
               do_request.call prepare_request[new_uri]
             when "404"
               logger.error "404 at #{request.method} #{request.uri} with body: #{
-                if response.body.is_a? Net::ReadAdapter
-                  "impossible to reread Net::ReadAdapter -- check the IO you've used in block form"
+                if !response.body
+                  response.body.class
+                elsif response.body.is_a? Net::ReadAdapter
+                  "<<impossible to reread Net::ReadAdapter -- check the IO you've used in block form>>"
                 elsif response.to_hash["content-type"] == ["image/png"]
                   response.to_hash["content-type"].to_s
                 else
@@ -236,9 +238,13 @@ module NetHTTPUtils
               response
             when /\A50\d\z/
               logger.error "#{response.code} at #{request.method} #{request.uri} with body: #{
-                response.body.tap do |body|
-                  body.replace remove_tags body if body[/<html[> ]/]
-                end.inspect
+                if !response.body
+                  response.body.class
+                else
+                  response.body.tap do |body|
+                    body.replace remove_tags body if body[/<html[> ]/]
+                  end.inspect
+                end
               }"
               response
             when /\A20/
@@ -253,7 +259,7 @@ module NetHTTPUtils
                 response.body.tap do |body|
                   body.replace remove_tags body if body[/<html[> ]/]
                 end.inspect
-              }"
+              }" if request.is_a? Net::HTTP::Get
               response
             end
           end
@@ -273,11 +279,13 @@ module NetHTTPUtils
       http = start_http http, max_start_http_retry_delay, timeout unless http.is_a? Net::HTTP
       path = http.instance_variable_get(:@uri).path
       if mtd == :GET
-        head = http.head path, header
+        head = request_data http, :HEAD, max_start_http_retry_delay: max_start_http_retry_delay, max_read_retry_delay: max_read_retry_delay
+        h = head.instance_variable_get :@header
+        code = head.instance_variable_get(:@code)
         raise Error.new(
-          (head.to_hash["content-type"] == ["image/png"] ? head.to_hash["content-type"] : head.body),
-          head.code.to_i
-        ) unless head.code[/\A(20\d|3\d\d)\z/]
+          (h["content-type"] == ["image/png"] ? h["content-type"] : head),
+          code.to_i
+        ) unless code[/\A(20\d|3\d\d)\z/]
       end
       body = http.read mtd, type, form: form, header: header, auth: auth, timeout: timeout,
         max_read_retry_delay: max_read_retry_delay,
