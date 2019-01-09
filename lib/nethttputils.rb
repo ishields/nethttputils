@@ -95,6 +95,7 @@ module NetHTTPUtils
         retry
       end.tap do |http|
         http.instance_variable_set :@uri, uri
+        http.instance_variable_set :@http, nil
         http.define_singleton_method :read do |mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30,
             max_read_retry_delay: 3600,
             patch_request: nil,
@@ -161,7 +162,7 @@ module NetHTTPUtils
               logger.debug stack.join " -> "
             end
           end
-          http = NetHTTPUtils.start_http url, max_start_http_retry_delay, timeout
+          http = instance_variable_get(:@http) || self
           do_request = lambda do |request|
             delay = 5
             response = begin
@@ -214,7 +215,7 @@ module NetHTTPUtils
                  http.use_ssl? != (new_uri.scheme == "https")
                 logger.debug "changing host from '#{http.address}' to '#{new_host}'"
                 # http.finish
-                http = NetHTTPUtils.start_http new_uri, max_start_http_retry_delay, timeout
+                instance_variable_set :@http, NetHTTPUtils.start_http(new_uri, max_start_http_retry_delay, timeout)
               end
               do_request.call prepare_request[new_uri]
             when "404"
@@ -256,7 +257,7 @@ module NetHTTPUtils
               response
             end
           end
-          response = do_request[prepare_request[uri]]
+          response = do_request.call prepare_request[uri]
           cookies.each{ |k, v| response.add_field "Set-Cookie", "#{k}=#{v};" }
           logger.debug "< header: #{response.to_hash}"
           (response.body || "").tap{ |r| r.instance_variable_set :@last_response, response }
@@ -302,6 +303,7 @@ end
 if $0 == __FILE__
   STDOUT.sync = true
   print "self testing... "
+  NetHTTPUtils.logger.level = Logger::DEBUG
   require "pp"
 
 
@@ -312,17 +314,17 @@ if $0 == __FILE__
   server = WEBrick::HTTPServer.new Port: 8000
   stack = []
   server.mount_proc ?/ do |req, res|
-    stack.push req.request_method
+    p stack.push req.request_method
   end
   t = Thread.new{ server.start }
   NetHTTPUtils.start_http("http://localhost:8000/")
-  fail unless stack == %w{ }
+  fail stack.inspect unless stack == %w{ }
   stack.clear
   NetHTTPUtils.start_http("http://localhost:8000/").head("/")
-  fail unless stack == %w{ HEAD }
+  fail stack.inspect unless stack == %w{ HEAD }
   stack.clear
   NetHTTPUtils.request_data("http://localhost:8000/")
-  fail unless stack == %w{ HEAD GET }
+  fail stack.inspect unless stack == %w{ HEAD GET }
   server.shutdown
 
   # TODO: test that HEAD method request goes through redirects
@@ -338,11 +340,14 @@ if $0 == __FILE__
   end
   Thread.abort_on_exception = true
   Thread.new{ server.start }
-  fail unless JSON.dump(["/", %w{ accept-encoding accept user-agent host connection }]) == NetHTTPUtils.request_data("http://localhost:8000/")
-  fail unless JSON.dump(["/?1", %w{ accept-encoding accept user-agent host connection }]) == NetHTTPUtils.request_data("http://localhost:8000/?1")
-  fail unless JSON.dump(["/?1=2", %w{ accept-encoding accept user-agent host connection }]) == NetHTTPUtils.request_data("http://localhost:8000/?1=2")
-  fail unless JSON.dump(["/?1=3", %w{ accept-encoding accept user-agent host connection }]) == NetHTTPUtils.request_data("http://localhost:8000/?1=2&3=4", form: {1=>3})
-  fail unless JSON.dump(["/", %w{ accept-encoding accept user-agent host content-type connection content-length }]) == NetHTTPUtils.request_data("http://localhost:8000/", :post, form: {1=>2})
+  check = lambda do |path, headers, response|
+    fail response unless JSON.dump([path, headers]) == response
+  end
+  check["/", %w{ accept-encoding accept user-agent host connection }, NetHTTPUtils.request_data("http://localhost:8000/")]
+  check["/?1", %w{ accept-encoding accept user-agent host connection }, NetHTTPUtils.request_data("http://localhost:8000/?1")]
+  check["/?1=2", %w{ accept-encoding accept user-agent host connection }, NetHTTPUtils.request_data("http://localhost:8000/?1=2")]
+  check["/?1=3", %w{ accept-encoding accept user-agent host connection }, NetHTTPUtils.request_data("http://localhost:8000/?1=2&3=4", form: {1=>3})]
+  check["/", %w{ accept-encoding accept user-agent host content-type connection content-length }, NetHTTPUtils.request_data("http://localhost:8000/", :post, form: {1=>2})]
   server.shutdown
 
 
@@ -359,7 +364,6 @@ if $0 == __FILE__
   fail unless NetHTTPUtils.start_http("http://httpstat.us/500").read == "500 Internal Server Error"
   fail unless NetHTTPUtils.start_http("http://httpstat.us/502").read == "502 Bad Gateway"
   fail unless NetHTTPUtils.start_http("http://httpstat.us/503").read == "503 Service Unavailable"
-  NetHTTPUtils.logger.level = Logger::FATAL
   [
     ["https://imgur.com/a/cccccc"],
     ["https://imgur.com/mM4Dh7Z"],
