@@ -136,7 +136,7 @@ module NetHTTPUtils
                   else       ; raise "unknown content-type '#{type}'"
                 end
               end
-              header.each{ |k, v| request[k.to_s] = v.first }
+              header.each{ |k, v| request[k.to_s] = v.is_a?(Array) ? v.first : v }
               request["cookie"] = [*request["cookie"], cookies.map{ |k, v| "#{k}=#{v}" }].join "; " unless cookies.empty?
 
               logger.info "> #{request.class} #{uri.host} #{request.path}"
