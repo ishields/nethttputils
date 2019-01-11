@@ -229,7 +229,7 @@ module NetHTTPUtils
                   response.to_hash["content-type"].to_s
                 else
                   response.body.tap do |body|
-                    body.replace remove_tags body if body[/<html[> ]/]
+                    body.replace NetHTTPUtils.remove_tags body if body[/<html[> ]/]
                   end.inspect
                 end
               }"
@@ -243,7 +243,7 @@ module NetHTTPUtils
                   response.body.class
                 else
                   response.body.tap do |body|
-                    body.replace remove_tags body if body[/<html[> ]/]
+                    body.replace NetHTTPUtils.remove_tags body if body[/<html[> ]/]
                   end.inspect
                 end
               }"
@@ -258,7 +258,7 @@ module NetHTTPUtils
               }"
               logger.debug "< body: #{
                 response.body.tap do |body|
-                  body.replace remove_tags body if body[/<html[> ]/]
+                  body.replace NetHTTPUtils.remove_tags body if body[/<html[> ]/]
                 end.inspect
               }" if request.is_a? Net::HTTP::Get
               response
