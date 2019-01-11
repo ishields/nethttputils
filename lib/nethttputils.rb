@@ -279,27 +279,42 @@ module NetHTTPUtils
         patch_request: nil, &block
       http = start_http http, max_start_http_retry_delay, timeout unless http.is_a? Net::HTTP
       path = http.instance_variable_get(:@uri).path
-      if mtd == :GET
-        head = request_data http, :HEAD, max_start_http_retry_delay: max_start_http_retry_delay, max_read_retry_delay: max_read_retry_delay
-        h = head.instance_variable_get :@header
-        code = head.instance_variable_get(:@code)
-        raise Error.new(
-          (h["content-type"] == ["image/png"] ? h["content-type"] : head),
-          code.to_i
-        ) unless code[/\A(20\d|3\d\d)\z/]
+
+      check_code = lambda do |body|
+        fail unless code = body.instance_variable_get(:@last_response).code
+        case code
+          # TODO: raise on 405
+          when /\A(20\d|3\d\d|405)\z/
+            nil
+          else
+            ct = body.instance_variable_get(:@last_response).to_hash.fetch("content-type")
+            raise Error.new(
+              (ct == ["image/png"] ? ct : body),
+              code.to_i
+            )
+        end
+      end
+      require "set"
+      @@_405 ||= Set.new
+      if mtd == :GET && !@@_405.include?(http.address)
+        body = request_data http, :HEAD, max_start_http_retry_delay: max_start_http_retry_delay, max_read_retry_delay: max_read_retry_delay
+        if "405" == body.instance_variable_get(:@last_response).code
+          @@_405.add http.address
+        else
+          check_code.call body
+        end
       end
       body = http.read mtd, type, form: form, header: header, auth: auth, timeout: timeout,
         max_read_retry_delay: max_read_retry_delay,
         patch_request: patch_request, &block
+      check_code.call body
+
       last_response = body.instance_variable_get :@last_response
       if last_response.to_hash["content-encoding"] == "gzip"
         Zlib::GzipReader.new(StringIO.new(body)).read
       else
         body
       end.tap do |string|
-        string.instance_variable_set :@code, last_response.code
-        string.instance_variable_set :@uri_path, path   # useless?
-        string.instance_variable_set :@header, last_response.to_hash
       end
     # ensure
     #   response.instance_variable_get("@nethttputils_close").call if response
