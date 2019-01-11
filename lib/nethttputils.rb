@@ -206,7 +206,7 @@ module NetHTTPUtils
             end
             logger.debug "< header: #{response.to_hash}"
             case response.code
-            when /\A3\d\d\z/
+            when /\A30\d\z/
               logger.info "redirect: #{response["location"]}"
               new_uri = URI.join request.uri, URI.escape(response["location"])
               new_host = new_uri.host
@@ -217,6 +217,7 @@ module NetHTTPUtils
                 # http.finish
                 instance_variable_set :@http, NetHTTPUtils.start_http(new_uri, max_start_http_retry_delay, timeout)
               end
+              mtd = :GET
               do_request.call prepare_request[new_uri]
             when "404"
               logger.error "404 at #{request.method} #{request.uri} with body: #{
