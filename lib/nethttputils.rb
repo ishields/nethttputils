@@ -95,14 +95,15 @@ module NetHTTPUtils
         retry
       end.tap do |http|
         http.instance_variable_set :@uri, uri
-        http.instance_variable_set :@http, nil
-        http.define_singleton_method :read do |mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30,
-            max_read_retry_delay: 3600,
-            patch_request: nil,
-            &block|
+        http.instance_variable_set :@max_start_http_retry_delay, max_start_http_retry_delay
+      end
+    end
 
+    private
+    def read http, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, max_read_retry_delay: 3600, patch_request: nil, &block
           logger = NetHTTPUtils.logger
 
+          uri = http.instance_variable_get :@uri
           logger.warn "Warning: query params included in `url` argument are discarded because `:form` isn't empty" if uri.query && !form.empty?
           # we can't just merge because URI fails to parse such queries as "/?1"
 
@@ -142,15 +143,17 @@ module NetHTTPUtils
               logger.info "> #{request.class} #{uri.host} #{request.path}"
               next unless logger.debug?
               logger.debug "content-length: #{request.content_length.to_i}, content-type: #{request.content_type}" unless %i{ HEAD GET }.include? mtd
+              logger.debug "query: #{uri.query.inspect}"
+              logger.debug "content-type: #{request.content_type.inspect}"
               curl_form = case request.content_type
                 when "application/json" ; "-d #{JSON.dump form} "
                 when "multipart/form-data" ; form.map{ |k, v| "-F \"#{k}=#{v.respond_to?(:to_path) ? "@#{v.to_path}" : v}\" " }.join
                 when "application/x-www-form-urlencoded" ; "-d \"#{URI.encode_www_form form}\" "
                 else %i{ HEAD GET }.include?(mtd) ? "" : fail("unknown content-type '#{request.content_type}'")
               end
-              logger.debug "curl -vsSL --compressed -o /dev/null #{
+              logger.debug "curl -vsSL --compressed -o /dev/null #{"-X HEAD " if request.is_a? Net::HTTP::Head}#{
                 request.each_header.map{ |k, v| "-H \"#{k}: #{v}\" " unless k == "host" }.join
-              }#{curl_form}'#{url.gsub "&", "\\\\&"}#{"?#{uri.query}" if uri.query && uri.query.empty?}'"
+              }#{curl_form}'#{uri.scheme}://#{uri.host}#{uri.path}#{"?#{uri.query}" if uri.query && !uri.query.empty?}'"
               logger.debug "> header: #{request.each_header.to_a}"
               logger.debug "> body: #{request.body.inspect.tap{ |body| body[997..-1] = "..." if body.size > 500 }}"
               # TODO this is buggy -- mixes lines from different files into one line
@@ -162,7 +165,6 @@ module NetHTTPUtils
               logger.debug stack.join " -> "
             end
           end
-          http = instance_variable_get(:@http) || self
           do_request = lambda do |request|
             delay = 5
             response = begin
@@ -204,7 +206,6 @@ module NetHTTPUtils
               logger.debug "set-cookie: #{k}=#{v[/[^;]+/]}"
               cookies.store k, v[/[^;]+/]
             end
-            logger.debug "< header: #{response.to_hash}"
             case response.code
             when /\A30\d\z/
               logger.info "redirect: #{response["location"]}"
@@ -215,7 +216,7 @@ module NetHTTPUtils
                  http.use_ssl? != (new_uri.scheme == "https")
                 logger.debug "changing host from '#{http.address}' to '#{new_host}'"
                 # http.finish
-                instance_variable_set :@http, NetHTTPUtils.start_http(new_uri, max_start_http_retry_delay, timeout)
+                http = NetHTTPUtils.start_http new_uri, http.instance_variable_get(:@max_start_http_retry_delay), timeout
               end
               mtd = :GET
               do_request.call prepare_request[new_uri]
@@ -251,9 +252,7 @@ module NetHTTPUtils
             when /\A20/
               response
             else
-              logger.warn "code #{response.code} at #{request.method} #{request.uri}#{
-                " and so #{url}" if request.uri.to_s != url
-              } from #{
+              logger.warn "code #{response.code} at #{request.method} #{request.uri} from #{
                 [__FILE__, caller.map{ |i| i[/(?<=:)\d+/] }].join ?:
               }"
               logger.debug "< body: #{
@@ -268,10 +267,8 @@ module NetHTTPUtils
           cookies.each{ |k, v| response.add_field "Set-Cookie", "#{k}=#{v};" }
           logger.debug "< header: #{response.to_hash}"
           (response.body || "").tap{ |r| r.instance_variable_set :@last_response, response }
-
-        end
-      end
     end
+    public
 
     def request_data http, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30,
         max_start_http_retry_delay: 3600,
@@ -306,7 +303,7 @@ module NetHTTPUtils
           check_code.call body
         end
       end
-      body = http.read mtd, type, form: form, header: header, auth: auth, timeout: timeout,
+      body = read http, mtd, type, form: form, header: header, auth: auth, timeout: timeout,
         max_read_retry_delay: max_read_retry_delay,
         patch_request: patch_request, &block
       check_code.call body
@@ -332,6 +329,7 @@ if $0 == __FILE__
   NetHTTPUtils.logger.level = Logger::DEBUG
   require "pp"
 
+  NetHTTPUtils.request_data("https://goo.gl/ySqUb5")  # this will fail if domain redirects are broken
 
   require "webrick"
   require "json"
@@ -385,11 +383,11 @@ if $0 == __FILE__
       raise unless e.code == code
     end
   end
-  fail unless NetHTTPUtils.start_http("http://httpstat.us/400").read == "400 Bad Request"
-  fail unless NetHTTPUtils.start_http("http://httpstat.us/404").read == "404 Not Found"
-  fail unless NetHTTPUtils.start_http("http://httpstat.us/500").read == "500 Internal Server Error"
-  fail unless NetHTTPUtils.start_http("http://httpstat.us/502").read == "502 Bad Gateway"
-  fail unless NetHTTPUtils.start_http("http://httpstat.us/503").read == "503 Service Unavailable"
+  fail unless NetHTTPUtils.method(:read).call(NetHTTPUtils.start_http("http://httpstat.us/400")) == "400 Bad Request"
+  fail unless NetHTTPUtils.method(:read).call(NetHTTPUtils.start_http("http://httpstat.us/404")) == "404 Not Found"
+  fail unless NetHTTPUtils.method(:read).call(NetHTTPUtils.start_http("http://httpstat.us/500")) == "500 Internal Server Error"
+  fail unless NetHTTPUtils.method(:read).call(NetHTTPUtils.start_http("http://httpstat.us/502")) == "502 Bad Gateway"
+  fail unless NetHTTPUtils.method(:read).call(NetHTTPUtils.start_http("http://httpstat.us/503")) == "503 Service Unavailable"
   [
     ["https://imgur.com/a/cccccc"],
     ["https://imgur.com/mM4Dh7Z"],
