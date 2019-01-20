@@ -297,7 +297,7 @@ module NetHTTPUtils
       require "set"
       @@_405 ||= Set.new
       if mtd == :GET && !@@_405.include?(http.address)
-        body = request_data http, :HEAD, header: header, auth: auth,
+        body = request_data http, :HEAD, form: form, header: header, auth: auth,
           max_start_http_retry_delay: max_start_http_retry_delay,
           max_read_retry_delay: max_read_retry_delay
         if "405" == body.instance_variable_get(:@last_response).code
