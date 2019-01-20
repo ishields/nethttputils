@@ -218,7 +218,10 @@ module NetHTTPUtils
                 # http.finish
                 http = NetHTTPUtils.start_http new_uri, http.instance_variable_get(:@max_start_http_retry_delay), timeout
               end
-              mtd = :GET
+              if request.method == "POST"
+                logger.info "POST redirects to GET (RFC)"
+                mtd = :GET
+              end
               do_request.call prepare_request[new_uri]
             when "404"
               logger.error "404 at #{request.method} #{request.uri} with body: #{
