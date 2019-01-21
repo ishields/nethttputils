@@ -104,7 +104,7 @@ module NetHTTPUtils
           logger = NetHTTPUtils.logger
 
           uri = http.instance_variable_get :@uri
-          logger.warn "Warning: query params included in `url` argument are discarded because `:form` isn't empty" if uri.query && !form.empty?
+          logger.debug "Warning: query params included in `url` argument are discarded because `:form` isn't empty" if uri.query && !form.empty?
           # we can't just merge because URI fails to parse such queries as "/?1"
 
           uri.query = URI.encode_www_form form if %i{ HEAD GET }.include?(mtd = mtd.upcase) && !form.empty?
