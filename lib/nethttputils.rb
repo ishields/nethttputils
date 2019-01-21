@@ -195,7 +195,7 @@ module NetHTTPUtils
             if remaining
               logger.debug "x-remaining: #{remaining}"
               if remaining <= 100
-                t = (reset_time - current_timestamp + 1).fdiv remaining
+                t = (reset_time - current_timestamp + 1).fdiv([remaining - 5, 1].max)
                 logger.warn "x-ratelimit sleep #{t} seconds"
                 sleep t
               end
