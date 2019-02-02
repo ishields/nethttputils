@@ -289,7 +289,7 @@ module NetHTTPUtils
           else
             ct = body.instance_variable_get(:@last_response).to_hash["content-type"]
             raise Error.new(
-              (ct == ["image/png"] ? ct.first : body),
+              (ct == ["image/png"] ? "<#{ct.first}>" : body),
               code.to_i
             )
         end
@@ -394,7 +394,7 @@ if $0 == __FILE__
   [
     ["https://imgur.com/a/cccccc"],
     ["https://imgur.com/mM4Dh7Z"],
-    ["https://i.redd.it/si758zk7r5xz.jpg", "HTTP error #404 [\"image/png\"]"],
+    ["https://i.redd.it/si758zk7r5xz.jpg", "HTTP error #404 <image/png>"],
   ].each do |url, expectation|
     begin
       puts NetHTTPUtils.remove_tags NetHTTPUtils.request_data url
