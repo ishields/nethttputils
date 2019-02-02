@@ -287,9 +287,9 @@ module NetHTTPUtils
           when /\A(20\d|3\d\d|405)\z/
             nil
           else
-            ct = body.instance_variable_get(:@last_response).to_hash.fetch("content-type")
+            ct = body.instance_variable_get(:@last_response).to_hash["content-type"]
             raise Error.new(
-              (ct == ["image/png"] ? ct : body),
+              (ct == ["image/png"] ? ct.first : body),
               code.to_i
             )
         end
