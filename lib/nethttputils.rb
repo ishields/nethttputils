@@ -297,10 +297,14 @@ module NetHTTPUtils
       require "set"
       @@_405 ||= Set.new
       if mtd == :GET && !@@_405.include?(http.address)
-        body = request_data http, :HEAD, form: form, header: header, auth: auth,
-          max_start_http_retry_delay: max_start_http_retry_delay,
-          max_read_retry_delay: max_read_retry_delay
-        if "405" == body.instance_variable_get(:@last_response).code
+        body = begin
+          request_data http, :HEAD, form: form, header: header, auth: auth,
+            max_start_http_retry_delay: max_start_http_retry_delay,
+            max_read_retry_delay: max_read_retry_delay
+        rescue NetHTTPUtils::Error => e
+          raise unless e.code == 400
+        end
+        if !body || "405" == body.instance_variable_get(:@last_response).code
           @@_405.add http.address
         else
           check_code.call body
@@ -332,11 +336,31 @@ if $0 == __FILE__
   NetHTTPUtils.logger.level = Logger::DEBUG
   require "pp"
 
-  NetHTTPUtils.request_data("https://goo.gl/ySqUb5")  # this will fail if domain redirects are broken
+  NetHTTPUtils.request_data "https://goo.gl/ySqUb5"   # this will fail if domain redirects are broken
 
   require "webrick"
   require "json"
   Thread.abort_on_exception = true
+
+  [
+    [WEBrick::HTTPStatus::NotFound, 404],
+    [WEBrick::HTTPStatus::BadRequest],
+    [WEBrick::HTTPStatus::MethodNotAllowed],
+  ].each do |webrick_exception, should_raise|
+    server = WEBrick::HTTPServer.new Port: 8000
+    server.mount_proc ?/ do |req, res|
+      res.set_error webrick_exception.new if "HEAD" == req.request_method
+    end
+    t = Thread.new{ server.start }
+    begin
+      NetHTTPUtils.request_data "http://localhost:8000/"
+      NetHTTPUtils.class_variable_get(:@@_405).clear
+      fail if should_raise
+    rescue NetHTTPUtils::Error => e
+      fail unless 404 == e.code
+    end
+    server.shutdown
+  end
 
   server = WEBrick::HTTPServer.new Port: 8000
   stack = []
@@ -348,6 +372,9 @@ if $0 == __FILE__
   fail stack.inspect unless stack == %w{ }
   stack.clear
   NetHTTPUtils.start_http("http://localhost:8000/").head("/")
+  fail stack.inspect unless stack == %w{ HEAD }
+  stack.clear
+  NetHTTPUtils.request_data("http://localhost:8000/", :head)
   fail stack.inspect unless stack == %w{ HEAD }
   stack.clear
   NetHTTPUtils.request_data("http://localhost:8000/")
