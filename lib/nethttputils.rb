@@ -273,6 +273,8 @@ module NetHTTPUtils
     end
     public
 
+    require "set"
+    @@_405 ||= Set.new
     def request_data http, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30,
         max_start_http_retry_delay: 3600,
         max_read_retry_delay: 3600,
@@ -294,8 +296,6 @@ module NetHTTPUtils
             )
         end
       end
-      require "set"
-      @@_405 ||= Set.new
       if mtd == :GET && !@@_405.include?(http.address)
         body = begin
           request_data http, :HEAD, form: form, header: header, auth: auth,
