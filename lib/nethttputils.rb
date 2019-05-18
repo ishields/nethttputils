@@ -201,10 +201,17 @@ module NetHTTPUtils
               end
             end
 
+            # TODO: use WEBrick::Cookie
+            old_cookies = cookies.dup
             response.to_hash.fetch("set-cookie", []).each do |c|
-              k, v = c.split(?=)
-              logger.debug "set-cookie: #{k}=#{v[/[^;]+/]}"
-              cookies.store k, v[/[^;]+/]
+              fail "bad cookie? #{c.inspect}" unless /\A([^\s=]+)=([^\s=]+)\z/.match c.split(/\s*;\s*/).first
+              logger.debug "set-cookie: #{$1}=#{$2}"
+              old_cookies.delete $1
+              cookies.store $1, $2
+            end
+            old_cookies.each do |k, v|
+              logger.debug "faking an old cookie into new response: #{k}=#{v}"
+              response.add_field "Set-Cookie", "#{k}=#{v}"
             end
             case response.code
             when /\A30\d\z/
@@ -267,7 +274,6 @@ module NetHTTPUtils
             end
           end
           response = do_request.call prepare_request[uri]
-          cookies.each{ |k, v| response.add_field "Set-Cookie", "#{k}=#{v};" }
           logger.debug "< header: #{response.to_hash}"
           (response.body || "").tap{ |r| r.instance_variable_set :@last_response, response }
     end
@@ -342,6 +348,25 @@ if $0 == __FILE__
   require "json"
   Thread.abort_on_exception = true
 
+  server = WEBrick::HTTPServer.new Port: 8000
+  server.mount_proc "/1" do |req, res|
+    next unless "GET" == req.request_method
+    res.cookies.push WEBrick::Cookie.new("1", "2")
+    res.cookies.push WEBrick::Cookie.new("3", "4")
+    res.cookies.push WEBrick::Cookie.new("1", "5")
+    res.status = 300
+    res["location"] = "/2"
+  end
+  server.mount_proc "/2" do |req, res|
+    res.cookies.push WEBrick::Cookie.new("3", "6")
+    res.cookies.push WEBrick::Cookie.new("4", "7")
+  end
+  t = Thread.new{ server.start }
+  fail unless %w{ 3=6 4=7 1=5 } == p(NetHTTPUtils.request_data("http://localhost:8000/1").
+    instance_variable_get(:@last_response).to_hash.fetch("set-cookie"))
+  server.shutdown
+  t.join
+
   [
     [WEBrick::HTTPStatus::NotFound, 404],
     [WEBrick::HTTPStatus::BadRequest],
@@ -360,6 +385,7 @@ if $0 == __FILE__
       fail unless 404 == e.code
     end
     server.shutdown
+    t.join
   end
 
   server = WEBrick::HTTPServer.new Port: 8000
@@ -380,12 +406,12 @@ if $0 == __FILE__
   NetHTTPUtils.request_data("http://localhost:8000/")
   fail stack.inspect unless stack == %w{ HEAD GET }
   server.shutdown
+  t.join
 
   # TODO: test that HEAD method request goes through redirects
   # TODO: test for `NetHTTPUtils.request_data "...", :head
   # TODO: request the HEAD only if mtd == :GET
 
-  t.join  # Address already in use - bind(2) for [::]:8000 (Errno::EADDRINUSE)
   server = WEBrick::HTTPServer.new Port: 8000
   server.mount_proc ?/ do |req, res|
     # pp req.dup.tap{ |_| _.instance_variable_set "@config", nil }
@@ -432,7 +458,6 @@ if $0 == __FILE__
     end
   end
   %w{
-    http://minus.com/lkP3hgRJd9npi
     http://www.cutehalloweencostumeideas.org/wp-content/uploads/2017/10/Niagara-Falls_04.jpg
   }.each do |url|
     begin
