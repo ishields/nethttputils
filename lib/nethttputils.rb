@@ -204,7 +204,7 @@ module NetHTTPUtils
             # TODO: use WEBrick::Cookie
             old_cookies = cookies.dup
             response.to_hash.fetch("set-cookie", []).each do |c|
-              fail "bad cookie? #{c.inspect}" unless /\A([^\s=]+)=([^\s]*)\z/.match c.split(/\s*;\s*/).first
+              next logger.warn "bad cookie: #{c.inspect}" unless /\A([^\s=]+)=([^\s]*)\z/.match c.split(/\s*;\s*/).first
               logger.debug "set-cookie: #{$1}=#{$2}"
               old_cookies.delete $1
               cookies.store $1, $2
@@ -357,16 +357,18 @@ if $0 == __FILE__
     res.cookies.push WEBrick::Cookie.new("8", "9")
     res.cookies.push WEBrick::Cookie.new("a", "b")
     res.cookies.push WEBrick::Cookie.new("1", "5")
+    res.cookies.push WEBrick::Cookie.new("f", "g h")
     res.status = 300
     res["location"] = "/2"
   end
   server.mount_proc "/2" do |req, res|
     res.cookies.push WEBrick::Cookie.new("3", "6=c")
+    res.cookies.push WEBrick::Cookie.new("a", "d e")
     res.cookies.push WEBrick::Cookie.new("8", "")
     res.cookies.push WEBrick::Cookie.new("4", "7")
   end
   t = Thread.new{ server.start }
-  fail unless %w{ 3=6=c 8= 4=7 1=5 a=b } == p(NetHTTPUtils.request_data("http://localhost:8000/1").
+  fail unless %w{ 3=6=c a=d\ e 8= 4=7 1=5 a=b } == p(NetHTTPUtils.request_data("http://localhost:8000/1").
     instance_variable_get(:@last_response).to_hash.fetch("set-cookie"))
   server.shutdown
   t.join
