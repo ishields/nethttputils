@@ -18,7 +18,7 @@ module NetHTTPUtils
     attr_reader :code
     def initialize body, code = nil
       @code = code
-      super "HTTP error ##{code} #{body}"
+      super "HTTP error ##{code.inspect} #{body}"
     end
   end
 
@@ -219,11 +219,12 @@ module NetHTTPUtils
               logger.info "redirect: #{response["location"]}"
               new_uri = URI.join request.uri, URI.escape(response["location"])
               new_host = new_uri.host
+              raise Error.new "redirected in place" if new_uri == http.instance_variable_get(:@uri)
               if http.address != new_host ||
                  http.port != new_uri.port ||
                  http.use_ssl? != (new_uri.scheme == "https")
                 logger.debug "changing host from '#{http.address}' to '#{new_host}'"
-                # http.finish
+                # http.finish   # why commented out?
                 http = NetHTTPUtils.start_http new_uri, http.instance_variable_get(:@max_start_http_retry_delay), timeout
               end
               if request.method == "POST"
@@ -348,6 +349,24 @@ if $0 == __FILE__
   require "webrick"
   require "json"
   Thread.abort_on_exception = true
+
+  server = WEBrick::HTTPServer.new Port: 8000
+  tt = false
+  server.mount_proc "/" do |req, res|
+    next unless "HEAD" == req.request_method
+    fail if tt
+    tt = true
+    res.status = 300
+    res["location"] = "/"
+  end
+  t = Thread.new{ server.start }
+  begin
+    NetHTTPUtils.request_data "http://localhost:8000/"
+  rescue NetHTTPUtils::Error => e
+    raise if e.code
+  end
+  server.shutdown
+  t.join
 
   server = WEBrick::HTTPServer.new Port: 8000
   server.mount_proc "/1" do |req, res|
