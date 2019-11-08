@@ -217,7 +217,7 @@ module NetHTTPUtils
             case response.code
             when /\A30\d\z/
               logger.info "redirect: #{response["location"]}"
-              new_uri = URI.join request.uri, URI.escape(response["location"])
+              new_uri = URI.join request.uri, response["location"]
               new_host = new_uri.host
               raise Error.new "redirected in place" if new_uri == http.instance_variable_get(:@uri)
               if http.address != new_host ||
@@ -371,20 +371,20 @@ if $0 == __FILE__
   server = WEBrick::HTTPServer.new Port: 8000
   server.mount_proc "/1" do |req, res|
     next unless "GET" == req.request_method
-    res.cookies.push WEBrick::Cookie.new("1", "2")
-    res.cookies.push WEBrick::Cookie.new("3", "4")
-    res.cookies.push WEBrick::Cookie.new("8", "9")
-    res.cookies.push WEBrick::Cookie.new("a", "b")
-    res.cookies.push WEBrick::Cookie.new("1", "5")
-    res.cookies.push WEBrick::Cookie.new("f", "g h")
+    res.cookies.push WEBrick::Cookie.new "1", "2"
+    res.cookies.push WEBrick::Cookie.new "3", "4"
+    res.cookies.push WEBrick::Cookie.new "8", "9"
+    res.cookies.push WEBrick::Cookie.new "a", "b"
+    res.cookies.push WEBrick::Cookie.new "1", "5"
+    res.cookies.push WEBrick::Cookie.new "f", "g h"
     res.status = 300
     res["location"] = "/2"
   end
   server.mount_proc "/2" do |req, res|
-    res.cookies.push WEBrick::Cookie.new("3", "6=c")
-    res.cookies.push WEBrick::Cookie.new("a", "d e")
-    res.cookies.push WEBrick::Cookie.new("8", "")
-    res.cookies.push WEBrick::Cookie.new("4", "7")
+    res.cookies.push WEBrick::Cookie.new "3", "6=c"
+    res.cookies.push WEBrick::Cookie.new "a", "d e"
+    res.cookies.push WEBrick::Cookie.new "8", ""
+    res.cookies.push WEBrick::Cookie.new "4", "7"
   end
   t = Thread.new{ server.start }
   fail unless %w{ 3=6=c a=d\ e 8= 4=7 1=5 a=b } == p(NetHTTPUtils.request_data("http://localhost:8000/1").
@@ -501,10 +501,6 @@ if $0 == __FILE__
     end
   end
 
-  begin
-    fail NetHTTPUtils.request_data "https://oi64.tinypic.com/29z7oxs.jpg?", timeout: 5, max_start_http_retry_delay: -1
-  rescue Net::OpenTimeout => e
-  end
   ## this stopped failing on High Sierra
   # begin
   #   # https://www.virtualself.co/?
