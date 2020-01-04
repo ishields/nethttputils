@@ -1,7 +1,7 @@
 ---
 language: ruby
 
-script: "ruby lib/nethttputils.rb"
+script: "bundle install && bundle exec ruby lib/nethttputils.rb"
 
 os:
   - linux

@@ -25,8 +25,8 @@ module NetHTTPUtils
   class << self
 
     def remove_tags str
-      str.gsub(/<script( [a-z]+="[^"]*")*>.*?<\/script>/m, "").
-          gsub(/<style( [a-z]+="[^"]*")*>.*?<\/style>/m, "").
+      str.gsub(/<script( [a-z-]+="[^"]*")*>.*?<\/script>/m, "").
+          gsub(/<style( [a-z-]+="[^"]*")*>.*?<\/style>/m, "").
           gsub(/<[^>]*>/, "").split(?\n).map(&:strip).reject(&:empty?).join(?\n)
     end
 
@@ -217,7 +217,8 @@ module NetHTTPUtils
             case response.code
             when /\A30\d\z/
               logger.info "redirect: #{response["location"]}"
-              new_uri = URI.join request.uri, response["location"]
+              require "addressable"
+              new_uri = URI.join request.uri.to_s, Addressable::URI.escape(response["location"])
               new_host = new_uri.host
               raise Error.new "redirected in place" if new_uri == http.instance_variable_get(:@uri)
               if http.address != new_host ||
