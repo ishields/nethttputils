@@ -18,6 +18,7 @@ module NetHTTPUtils
     attr_reader :code
     def initialize body, code = nil
       @code = code
+      body = body[0...997] + "..." if body.size > 1000
       super "HTTP error ##{code.inspect} #{body}"
     end
   end
@@ -54,7 +55,7 @@ module NetHTTPUtils
               def << msg
                 @@buffer ||= "[Net::HTTP debug] "
                 @@buffer.concat msg
-                @@buffer = @@buffer[0...997] + "..." if @@buffer.size > 500
+                @@buffer = @@buffer[0...997] + "..." if @@buffer.size > 1000
                 return unless @@buffer.end_with? ?\n
                 NetHTTPUtils.logger.debug @@buffer.sub ?\n, "  "
                 @@buffer = nil
@@ -155,7 +156,7 @@ module NetHTTPUtils
                 request.each_header.map{ |k, v| "-H \"#{k}: #{v}\" " unless k == "host" }.join
               }#{curl_form}'#{uri.scheme}://#{uri.host}#{uri.path}#{"?#{uri.query}" if uri.query && !uri.query.empty?}'"
               logger.debug "> header: #{request.each_header.to_a}"
-              logger.debug "> body: #{request.body.inspect.tap{ |body| body[997..-1] = "..." if body.size > 500 }}"
+              logger.debug "> body: #{request.body.inspect.tap{ |body| body.replace body[0...997] + "..." if body.size > 1000 }}"
               # TODO this is buggy -- mixes lines from different files into one line
               stack = caller.reverse.map do |level|
                 /((?:[^\/:]+\/)?[^\/:]+):([^:]+)/.match(level).captures
@@ -169,7 +170,7 @@ module NetHTTPUtils
             delay = 5
             response = begin
               http.request request, &block
-            rescue Errno::ECONNREFUSED, Net::ReadTimeout, Net::OpenTimeout, Zlib::BufError, Errno::ECONNRESET, OpenSSL::SSL::SSLError => e
+            rescue Errno::ECONNREFUSED, Net::ReadTimeout, Net::OpenTimeout, Zlib::BufError, Errno::ECONNRESET, OpenSSL::SSL::SSLError, Errno::ETIMEDOUT => e
               raise if max_read_retry_delay < delay *= 2
               logger.error "retrying in #{delay} seconds because of #{e.class} '#{e.message}' at: #{request.uri}"
               sleep delay
