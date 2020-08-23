@@ -22,6 +22,8 @@ module NetHTTPUtils
       super "HTTP error ##{code.inspect} #{body}"
     end
   end
+  class EOFError_from_rbuf_fill < StandardError
+  end
 
   class << self
 
@@ -175,6 +177,11 @@ module NetHTTPUtils
               logger.error "retrying in #{delay} seconds because of #{e.class} '#{e.message}' at: #{request.uri}"
               sleep delay
               retry
+            rescue EOFError => e
+              raise unless e.backtrace.empty?
+              # https://bugs.ruby-lang.org/issues/13018
+              # https://blog.kalina.tech/2019/04/exception-without-backtrace-in-ruby.html?spref=reddit
+              raise EOFError_from_rbuf_fill.new "probably the old Ruby empty backtrace EOFError exception from net/protocol.rb"
             end
             # response.instance_variable_set "@nethttputils_close", http.method(:finish)
             # response.singleton_class.instance_eval{ attr_accessor :nethttputils_socket_to_close }
@@ -469,7 +476,7 @@ if $0 == __FILE__
   fail unless NetHTTPUtils.method(:read).call(NetHTTPUtils.start_http("http://httpstat.us/400")) == "400 Bad Request"
   fail unless NetHTTPUtils.method(:read).call(NetHTTPUtils.start_http("http://httpstat.us/404")) == "404 Not Found"
   fail unless NetHTTPUtils.method(:read).call(NetHTTPUtils.start_http("http://httpstat.us/500")) == "500 Internal Server Error"
-  fail unless NetHTTPUtils.method(:read).call(NetHTTPUtils.start_http("http://httpstat.us/502")) == "502 Bad Gateway"
+  fail unless NetHTTPUtils.method(:read).call(NetHTTPUtils.start_http("http://httpstat.us/502")).start_with? "httpstat.us | 502: Bad gateway\nError\n502\n"
   fail unless NetHTTPUtils.method(:read).call(NetHTTPUtils.start_http("http://httpstat.us/503")) == "503 Service Unavailable"
   [
     ["https://imgur.com/a/cccccc"],
