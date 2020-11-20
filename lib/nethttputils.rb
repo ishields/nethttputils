@@ -172,7 +172,7 @@ module NetHTTPUtils
             delay = 5
             response = begin
               http.request request, &block
-            rescue Errno::ECONNREFUSED, Net::ReadTimeout, Net::OpenTimeout, Zlib::BufError, Errno::ECONNRESET, OpenSSL::SSL::SSLError, Errno::ETIMEDOUT => e
+            rescue Errno::ECONNREFUSED, Net::ReadTimeout, Net::OpenTimeout, Zlib::BufError, Errno::ECONNRESET, OpenSSL::SSL::SSLError, Errno::ETIMEDOUT, Errno::ENETUNREACH => e
               raise if max_read_retry_delay < delay *= 2
               logger.error "retrying in #{delay} seconds because of #{e.class} '#{e.message}' at: #{request.uri}"
               sleep delay
