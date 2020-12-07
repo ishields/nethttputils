@@ -21,7 +21,7 @@ Gem::Specification.new do |spec|
   spec.license      = "MIT"
 
   spec.require_path = "lib"
-  spec.files        = %w{ LICENSE nethttputils.gemspec lin/nethttputils.rb }
+  spec.files        = %w{ LICENSE nethttputils.gemspec lib/nethttputils.rb }
 
   spec.add_dependency "addressable"
 end
