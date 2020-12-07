@@ -33,7 +33,7 @@ module NetHTTPUtils
           gsub(/<[^>]*>/, "").split(?\n).map(&:strip).reject(&:empty?).join(?\n)
     end
 
-    def start_http url, max_start_http_retry_delay = 3600, timeout = 30
+    def start_http url, max_start_http_retry_delay = 3600, timeout = 30, proxy = nil
       uri = url
       uri = URI.parse begin
         URI url
@@ -45,6 +45,7 @@ module NetHTTPUtils
       begin
         Net::HTTP.start(
           uri.host, uri.port,
+          *(proxy.split ?: if proxy),
           use_ssl: uri.scheme == "https",
           verify_mode: OpenSSL::SSL::VERIFY_NONE,
           **({open_timeout: timeout}), #  if timeout
@@ -66,17 +67,13 @@ module NetHTTPUtils
           end ) if logger.level == Logger::DEBUG # use `logger.debug?`?
           http
         end
-      rescue Errno::ECONNREFUSED => e
+      rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Errno::ENETUNREACH, Errno::ECONNRESET => e
         if max_start_http_retry_delay < delay *= 2
           e.message.concat " to #{uri}"
           raise
         end
         logger.warn "retrying in #{delay} seconds because of #{e.class} '#{e.message}'"
         sleep delay
-        retry
-      rescue Errno::EHOSTUNREACH, Errno::ENETUNREACH, Errno::ECONNRESET => e
-        logger.warn "retrying in 5 seconds because of #{e.class} '#{e.message}'"
-        sleep 5
         retry
       rescue SocketError => e
         if max_start_http_retry_delay < delay *= 2
@@ -186,6 +183,7 @@ module NetHTTPUtils
             # response.instance_variable_set "@nethttputils_close", http.method(:finish)
             # response.singleton_class.instance_eval{ attr_accessor :nethttputils_socket_to_close }
 
+            now = Time.now
             remaining, reset_time, current_timestamp = if response.key? "x-ratelimit-userremaining"
               logger.debug "x-ratelimit-clientremaining: #{response.fetch("x-ratelimit-clientremaining").to_i}"
               [
@@ -197,7 +195,13 @@ module NetHTTPUtils
               [
                 response.fetch("x-rate-limit-remaining").to_i,
                 response.fetch("x-rate-limit-reset").to_i,
-                Time.now.to_i,
+                now.to_i,
+              ]
+            elsif response.key? "x-ratelimit-remaining"
+              [
+                response.fetch("x-ratelimit-remaining").to_i,
+                now + response.fetch("x-ratelimit-reset").to_i,
+                now.to_i,
               ]
             end
             if remaining
@@ -292,11 +296,12 @@ module NetHTTPUtils
 
     require "set"
     @@_405 ||= Set.new
-    def request_data http, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30,
+    def request_data http, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, proxy: nil,
+        timeout: 30,
         max_start_http_retry_delay: 3600,
         max_read_retry_delay: 3600,
         patch_request: nil, &block
-      http = start_http http, max_start_http_retry_delay, timeout unless http.is_a? Net::HTTP
+      http = start_http http, max_start_http_retry_delay, timeout, *proxy unless http.is_a? Net::HTTP
       path = http.instance_variable_get(:@uri).path
 
       check_code = lambda do |body|
