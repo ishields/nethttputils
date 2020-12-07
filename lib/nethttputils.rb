@@ -484,13 +484,13 @@ if $0 == __FILE__
   fail unless NetHTTPUtils.method(:read).call(NetHTTPUtils.start_http("http://httpstat.us/502")).start_with? "httpstat.us | 502: Bad gateway\nError\n502\n"
   fail unless NetHTTPUtils.method(:read).call(NetHTTPUtils.start_http("http://httpstat.us/503")) == "503 Service Unavailable"
   [
-    ["https://imgur.com/a/cccccc"],
-    ["https://imgur.com/mM4Dh7Z"],
+    # ["https://imgur.com/a/oacI3gl"],  # TODO: Imgur now hangs on these pages, I guess they had to be some 404 error page
+    # ["https://imgur.com/mM4Dh7Z"],    # TODO: Imgur now hangs on these pages, I guess they had to be some 404 error page
     ["https://i.redd.it/si758zk7r5xz.jpg", "HTTP error #404 <image/png>"],
   ].each do |url, expectation|
     begin
       puts NetHTTPUtils.remove_tags NetHTTPUtils.request_data url
-      fail
+      fail url
     rescue NetHTTPUtils::Error => e
       raise e.code.inspect unless e.code == 404
       raise e.to_s if e.to_s != expectation if expectation
