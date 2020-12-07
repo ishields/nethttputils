@@ -1,6 +1,6 @@
 Gem::Specification.new do |spec|
   spec.name         = "nethttputils"
-  spec.version      = "0.4.1.0"
+  spec.version      = "0.4.1.1"
   spec.summary      = "this tool is like a pet that I adopted young and now I depend on, sorry"
   spec.description = <<-EOF
     Back in 2015 I was a guy automating things at my job and two scripts had a common need --
@@ -21,7 +21,7 @@ Gem::Specification.new do |spec|
   spec.license      = "MIT"
 
   spec.require_path = "lib"
-  spec.files        = `git ls-files -z`.split(?\0) - spec.test_files
+  spec.files        = %w{ LICENSE nethttputils.gemspec lin/nethttputils.rb }
 
   spec.add_dependency "addressable"
 end
