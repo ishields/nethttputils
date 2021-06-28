@@ -305,7 +305,7 @@ module NetHTTPUtils
     require "set"
     @@_405 ||= Set.new
     def request_data http, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, proxy: nil,
-        timeout: nil, no_redirect: no_redirect,
+        timeout: nil, no_redirect: false,
         max_start_http_retry_delay: 3600,
         max_read_retry_delay: 3600,
         patch_request: nil, &block
