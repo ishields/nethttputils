@@ -33,7 +33,8 @@ module NetHTTPUtils
           gsub(/<[^>]*>/, "").split(?\n).map(&:strip).reject(&:empty?).join(?\n)
     end
 
-    def start_http url, max_start_http_retry_delay = 3600, timeout = 30, proxy = nil
+    def start_http url, max_start_http_retry_delay = 3600, timeout = nil, no_redirect = false, proxy = nil
+      timeout ||= 30
       uri = url
       uri = URI.parse begin
         URI url
@@ -100,7 +101,8 @@ module NetHTTPUtils
     end
 
     private
-    def read http, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: 30, max_read_retry_delay: 3600, patch_request: nil, &block
+    def read http, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: nil, no_redirect: false, max_read_retry_delay: 3600, patch_request: nil, &block
+      timeout ||= 30
           logger = NetHTTPUtils.logger
 
           uri = http.instance_variable_get :@uri
@@ -126,15 +128,20 @@ module NetHTTPUtils
               request.basic_auth *auth if auth
               if (mtd == :POST || mtd == :PATCH) && !form.empty?
                 case type
-                  when :json ; request.body = JSON.dump form
-                               request.content_type = "application/json"
-                  when :form ; if form.any?{ |k, v| v.respond_to? :to_path }
+                  when :json
+                                    request.body = JSON.dump form
+                                    request.content_type = "application/json"
+                  when :multipart
+                    request.set_form form, "multipart/form-data"
+                  when :form
+                               if form.any?{ |k, v| v.respond_to? :to_path }
                                  request.set_form form, "multipart/form-data"
                                else
                                  request.set_form_data form
                                  request.content_type = "application/x-www-form-urlencoded;charset=UTF-8"
                                end
-                  else       ; raise "unknown content-type '#{type}'"
+                  else
+                    raise "unknown content-type '#{type}'"
                 end
               end
               header.each{ |k, v| request[k.to_s] = v.is_a?(Array) ? v.first : v }
@@ -177,7 +184,7 @@ module NetHTTPUtils
             rescue EOFError => e
               raise unless e.backtrace.empty?
               # https://bugs.ruby-lang.org/issues/13018
-              # https://blog.kalina.tech/2019/04/exception-without-backtrace-in-ruby.html?spref=reddit
+              # https://blog.kalina.tech/2019/04/exception-without-backtrace-in-ruby.html
               raise EOFError_from_rbuf_fill.new "probably the old Ruby empty backtrace EOFError exception from net/protocol.rb"
             end
             # response.instance_variable_set "@nethttputils_close", http.method(:finish)
@@ -227,7 +234,10 @@ module NetHTTPUtils
             end
 
             case response.code
+            when /\A20/
+              response
             when /\A30\d\z/
+              next response if no_redirect
               logger.info "redirect: #{response["location"]}"
               require "addressable"
               new_uri = URI.join request.uri.to_s, Addressable::URI.escape(response["location"])
@@ -238,7 +248,7 @@ module NetHTTPUtils
                  http.use_ssl? != (new_uri.scheme == "https")
                 logger.debug "changing host from '#{http.address}' to '#{new_host}'"
                 # http.finish   # why commented out?
-                http = NetHTTPUtils.start_http new_uri, http.instance_variable_get(:@max_start_http_retry_delay), timeout
+                http = NetHTTPUtils.start_http new_uri, http.instance_variable_get(:@max_start_http_retry_delay), timeout, no_redirect
               end
               if request.method == "POST"
                 logger.info "POST redirects to GET (RFC)"
@@ -274,8 +284,6 @@ module NetHTTPUtils
                 end
               }"
               response
-            when /\A20/
-              response
             else
               logger.warn "code #{response.code} at #{request.method} #{request.uri} from #{
                 [__FILE__, caller.map{ |i| i[/(?<=:)\d+/] }].join ?:
@@ -297,11 +305,12 @@ module NetHTTPUtils
     require "set"
     @@_405 ||= Set.new
     def request_data http, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, proxy: nil,
-        timeout: 30,
+        timeout: nil, no_redirect: no_redirect,
         max_start_http_retry_delay: 3600,
         max_read_retry_delay: 3600,
         patch_request: nil, &block
-      http = start_http http, max_start_http_retry_delay, timeout, *proxy unless http.is_a? Net::HTTP
+      timeout ||= 30
+      http = start_http http, max_start_http_retry_delay, timeout, no_redirect, *proxy unless http.is_a? Net::HTTP
       path = http.instance_variable_get(:@uri).path
 
       check_code = lambda do |body|
@@ -332,7 +341,8 @@ module NetHTTPUtils
           check_code.call body
         end
       end
-      body = read http, mtd, type, form: form, header: header, auth: auth, timeout: timeout,
+      body = read http, mtd, type, form: form, header: header, auth: auth,
+        timeout: timeout, no_redirect: no_redirect,
         max_read_retry_delay: max_read_retry_delay,
         patch_request: patch_request, &block
       check_code.call body
