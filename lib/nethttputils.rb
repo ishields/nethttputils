@@ -101,15 +101,17 @@ module NetHTTPUtils
     end
 
     private
-    def read http, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, timeout: nil, no_redirect: false, max_read_retry_delay: 3600, patch_request: nil, &block
+    def read http, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, force_post: false, timeout: nil, no_redirect: false, max_read_retry_delay: 3600, patch_request: nil, &block
       timeout ||= 30
-          logger = NetHTTPUtils.logger
+      logger = NetHTTPUtils.logger
+      logger.info [mtd, http].inspect
 
           uri = http.instance_variable_get :@uri
-          logger.debug "Warning: query params included in `url` argument are discarded because `:form` isn't empty" if uri.query && !form.empty?
+      if %i{ HEAD GET }.include?(mtd = mtd.upcase) && !form.empty?  # not .upcase! because it's not defined for Symbol
+        logger.debug "Warning: query params included in `url` argument are discarded because `:form` isn't empty" if uri.query
           # we can't just merge because URI fails to parse such queries as "/?1"
-
-          uri.query = URI.encode_www_form form if %i{ HEAD GET }.include?(mtd = mtd.upcase) && !form.empty?
+        uri.query = URI.encode_www_form form
+      end
           cookies = {}
           prepare_request = lambda do |uri|
             case mtd.upcase
@@ -233,6 +235,7 @@ module NetHTTPUtils
               response.add_field "Set-Cookie", "#{k}=#{v}"
             end
 
+            logger.info "response.code = #{response.code}"
             case response.code
             when /\A20/
               response
@@ -250,8 +253,8 @@ module NetHTTPUtils
                 # http.finish   # why commented out?
                 http = NetHTTPUtils.start_http new_uri, http.instance_variable_get(:@max_start_http_retry_delay), timeout, no_redirect
               end
-              if request.method == "POST"
-                logger.info "POST redirects to GET (RFC)"
+              if !force_post && request.method == "POST"
+                logger.info "POST redirects to GET (RFC)"   # TODO: do it only on code 307; note that some servers still do 302
                 mtd = :GET
               end
               do_request.call prepare_request[new_uri]
@@ -285,8 +288,9 @@ module NetHTTPUtils
               }"
               response
             else
-              logger.warn "code #{response.code} at #{request.method} #{request.uri} from #{
-                [__FILE__, caller.map{ |i| i[/(?<=:)\d+/] }].join ?:
+              logger.warn "code #{response.code} from #{request.method} #{request.uri} at #{
+                caller_path, caller_locs = caller_locations.chunk(&:path).first
+                [caller_path, caller_locs.map(&:lineno).chunk(&:itself).map(&:first)].join ":"
               }"
               logger.debug "< body: #{
                 response.body.tap do |body|
@@ -304,7 +308,7 @@ module NetHTTPUtils
 
     require "set"
     @@_405 ||= Set.new
-    def request_data http, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, proxy: nil,
+    def request_data http, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, proxy: nil, force_post: false,
         timeout: nil, no_redirect: false,
         max_start_http_retry_delay: 3600,
         max_read_retry_delay: 3600,
@@ -341,7 +345,7 @@ module NetHTTPUtils
           check_code.call body
         end
       end
-      body = read http, mtd, type, form: form, header: header, auth: auth,
+      body = read http, mtd, type, form: form, header: header, auth: auth, force_post: force_post,
         timeout: timeout, no_redirect: no_redirect,
         max_read_retry_delay: max_read_retry_delay,
         patch_request: patch_request, &block
@@ -352,7 +356,6 @@ module NetHTTPUtils
         Zlib::GzipReader.new(StringIO.new(body)).read
       else
         body
-      end.tap do |string|
       end
     # ensure
     #   response.instance_variable_get("@nethttputils_close").call if response
