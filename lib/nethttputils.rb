@@ -308,10 +308,8 @@ module NetHTTPUtils
 
     require "set"
     @@_405 ||= Set.new
-    def request_data http, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, proxy: nil, force_post: false,
-        timeout: nil, no_redirect: false,
-        max_start_http_retry_delay: 3600,
-        max_read_retry_delay: 3600,
+    def request_data http, mtd = :GET, type = :form, form: {}, header: {}, auth: nil, proxy: nil, force_post: false, no_redirect: false, head: false,
+        timeout: nil, max_start_http_retry_delay: 3600, max_read_retry_delay: 3600,
         patch_request: nil, &block
       timeout ||= 30
       http = start_http http, max_start_http_retry_delay, timeout, no_redirect, *proxy unless http.is_a? Net::HTTP
@@ -331,7 +329,7 @@ module NetHTTPUtils
             )
         end
       end
-      if mtd == :GET && !@@_405.include?(http.address)
+      if head && mtd == :GET && !@@_405.include?(http.address)
         body = begin
           request_data http, :HEAD, form: form, header: header, auth: auth,
             max_start_http_retry_delay: max_start_http_retry_delay,
@@ -419,6 +417,7 @@ if $0 == __FILE__
   server.shutdown
   t.join
 
+  # HEAD should raise on 404 but not in two other cases
   [
     [WEBrick::HTTPStatus::NotFound, 404],
     [WEBrick::HTTPStatus::BadRequest],
@@ -430,7 +429,7 @@ if $0 == __FILE__
     end
     t = Thread.new{ server.start }
     begin
-      NetHTTPUtils.request_data "http://localhost:8000/"
+      NetHTTPUtils.request_data "http://localhost:8000/", head: true
       NetHTTPUtils.class_variable_get(:@@_405).clear
       fail if should_raise
     rescue NetHTTPUtils::Error => e
@@ -455,7 +454,7 @@ if $0 == __FILE__
   NetHTTPUtils.request_data("http://localhost:8000/", :head)
   fail stack.inspect unless stack == %w{ HEAD }
   stack.clear
-  NetHTTPUtils.request_data("http://localhost:8000/")
+  NetHTTPUtils.request_data("http://localhost:8000/", head: true)
   fail stack.inspect unless stack == %w{ HEAD GET }
   server.shutdown
   t.join
@@ -522,7 +521,7 @@ if $0 == __FILE__
     http://www.aeronautica.difesa.it/organizzazione/REPARTI/divolo/PublishingImages/6%C2%B0%20Stormo/2013-decollo%20al%20tramonto%20REX%201280.jpg
   }.each do |url|
     begin
-      NetHTTPUtils.request_data url, timeout: 5, max_read_retry_delay: -1
+      NetHTTPUtils.request_data url, timeout: 5, max_read_retry_delay: -1, head: true
       fail
     rescue Net::ReadTimeout
     end
