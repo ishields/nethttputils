@@ -1,8 +1,8 @@
 require "net/http"
+require "cgi"
 require "openssl"
 
 require "logger"
-
 
 module NetHTTPUtils
   class << self
@@ -42,7 +42,7 @@ module NetHTTPUtils
         URI url
         url
       rescue URI::InvalidURIError
-        URI.escape url
+        CGI.escape url
       end unless url.is_a? URI::HTTP
       delay = 5
       begin
