@@ -1,3 +1,5 @@
 /pkg/
-/CATME.txt
 /Gemfile.lock
+
+/CATME.txt
+/temp.*

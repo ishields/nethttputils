@@ -28,6 +28,7 @@ module NetHTTPUtils
   end
 
   class << self
+    require "addressable"
 
     def remove_tags str
       str.gsub(/<script( [a-z-]+="[^"]*")*>.*?<\/script>/m, "").
@@ -38,12 +39,14 @@ module NetHTTPUtils
     def start_http url, max_start_http_retry_delay = 3600, timeout = nil, no_redirect = false, proxy = nil
       timeout ||= 30
       uri = url
-      uri = URI.parse begin
+
+      uri = begin
         URI url
-        url
       rescue URI::InvalidURIError
-        CGI.escape url
+        URI Addressable::URI.escape url
       end unless url.is_a? URI::HTTP
+      raise Error, "can't parse host" unless uri.host
+
       delay = 5
       begin
         Net::HTTP.start(
@@ -135,7 +138,7 @@ module NetHTTPUtils
                   when :json
                                     request.body = JSON.dump form
                                     request.content_type = "application/json"
-                  when :multipart
+                  when :multipart   # in this case form can be of width 3 (when sending files)
                     request.set_form form, "multipart/form-data"
                   when :form
                                if form.any?{ |k, v| v.respond_to? :to_path }
@@ -173,7 +176,7 @@ module NetHTTPUtils
               end.chunk(&:first).map do |file, group|
                 "#{file}:#{group.map(&:last).chunk{|_|_}.map(&:first).join(",")}"
               end
-              logger.debug stack.join " -> "
+              logger.info stack.join " -> "
             end
           end
           do_request = lambda do |request|
@@ -244,7 +247,6 @@ module NetHTTPUtils
             when /\A30\d\z/
               next response if no_redirect
               logger.info "redirect: #{response["location"]}"
-              require "addressable"
               new_uri = URI.join request.uri.to_s, Addressable::URI.escape(response["location"])
               new_host = new_uri.host
               raise Error.new "redirected in place" if new_uri == http.instance_variable_get(:@uri)
