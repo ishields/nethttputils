@@ -215,7 +215,7 @@ module NetHTTPUtils
             elsif response.key? "x-ratelimit-remaining"
               [
                 response.fetch("x-ratelimit-remaining").to_i,
-                now + response.fetch("x-ratelimit-reset").to_i,
+                now.to_i + response.fetch("x-ratelimit-reset").to_i,
                 now.to_i,
               ]
             end
